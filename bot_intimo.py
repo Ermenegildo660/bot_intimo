@@ -1,6 +1,5 @@
 import os
 import random
-from datetime import time as dtime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
@@ -11,9 +10,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID", "361555418"))
 EXTRA_PASS = os.environ.get("EXTRA_PASS", "hailee_2025")
 PHOTOS_FOLDER = "photos_hailee"
-
-GOOD_MORNING_TIME = dtime(6, 30)
-GOOD_NIGHT_TIME = dtime(23, 0)
 
 GOOD_MORNING_MSGS = [
     "Buongiorno… un pensiero speciale per te 💗",
@@ -71,37 +67,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         pic = random_photo()
         if pic:
-            await update.message.reply_photo(open(pic, "rb"), caption="Ecco il tuo pensiero speciale ❤️")
+            await update.message.reply_photo(
+                open(pic, "rb"),
+                caption="Ecco il tuo pensiero speciale ❤️"
+            )
         else:
             await update.message.reply_text("Nessuna foto trovata.")
         return
 
     await update.message.reply_text("Comando non riconosciuto.")
 
-async def buongiorno(context: ContextTypes.DEFAULT_TYPE):
-    pic = random_photo()
-    msg = random.choice(GOOD_MORNING_MSGS)
-    if pic:
-        await context.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
-    else:
-        await context.bot.send_message(OWNER_ID, msg)
-
-async def buonanotte(context: ContextTypes.DEFAULT_TYPE):
-    pic = random_photo()
-    msg = random.choice(GOOD_NIGHT_MSGS)
-    if pic:
-        await context.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
-    else:
-        await context.bot.send_message(OWNER_ID, msg)
-
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    jq = app.job_queue
-    jq.run_daily(buongiorno, time=GOOD_MORNING_TIME)
-    jq.run_daily(buonanotte, time=GOOD_NIGHT_TIME)
 
     app.run_polling()
 
