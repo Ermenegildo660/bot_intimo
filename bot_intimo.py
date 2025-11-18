@@ -16,9 +16,9 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "361555418"))
 EXTRA_PASS = os.environ.get("EXTRA_PASS", "hailee_2025")
 PHOTOS_FOLDER = "photos_hailee"
 
-GOOD_MORNING_TIME = dtime(6, 30)
-GOOD_NIGHT_TIME = dtime(23, 0)
-MIDDAY_TIME = dtime(14, 0)
+GOOD_MORNING_TIME = dtime(5, 30)
+GOOD_NIGHT_TIME = dtime(22, 0)
+MIDDAY_TIME = dtime(13, 0)
 
 # -------------------------------
 # MESSAGGI HOT 😈🔥
@@ -177,3 +177,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
