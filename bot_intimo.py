@@ -410,9 +410,9 @@ def main():
 
     jq = app.job_queue
 
-    jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME, timezone=ITALY_TZ)
-    jq.run_daily(send_good_night, time=GOOD_NIGHT_TIME, timezone=ITALY_TZ)
-    jq.run_daily(send_midday, time=MIDDAY_TIME, timezone=ITALY_TZ)
+    jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
+    jq.run_daily(send_good_night, time=GOOD_NIGHT_TIME)
+    jq.run_daily(send_midday, time=MIDDAY_TIME)
 
     jq.run_repeating(heartbeat, interval=600, first=10)
 
