@@ -1,421 +1,253 @@
 import os
 import random
 import json
-from datetime import time as dtime
-from zoneinfo import ZoneInfo
+from datetime import datetime, time as dtime, timedelta
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, ContextTypes, filters
 )
 
-# ------------------------------
-# CONFIGURAZIONE
-# ------------------------------
+# -------------------------------------------------
+# PARTE 1 — CONFIGURAZIONE BASE
+# -------------------------------------------------
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID", "361555418"))
 EXTRA_PASS = os.environ.get("EXTRA_PASS", "hailee_2025")
 
-# Cartelle foto dinamiche
-PHOTO_FOLDERS = {
-    "Hailee 💗": "photos_hailee",
-    "Alice 😊": "photos_alice",
-    "Alessia ✨": "photos_alessia",
-    "Gaia 🌙": "photos_gaia"
-}
+PHOTOS_HAILEE = "photos_hailee"
+PHOTOS_ALICE = "photos_alice"
+PHOTOS_ALESSIA = "photos_alessia"
+PHOTOS_GAIA = "photos_gaia"
+
+PHOTOS_CUTE = "photos_cute"
+PHOTOS_SPICY = "photos_spicy"
+PHOTOS_DARK = "photos_dark"
+PHOTOS_OUTFIT = "photos_outfit"
+PHOTOS_SELFIE = "photos_selfie"
+PHOTOS_EXTRA = "photos_extra"
 
 USED_PHOTOS_DIR = "used"
 os.makedirs(USED_PHOTOS_DIR, exist_ok=True)
 
-GOOD_MORNING_TIME = dtime(6, 30)
-GOOD_NIGHT_TIME = dtime(23, 0)
-MIDDAY_TIME = dtime(14, 0)
-
-ITALY_TZ = ZoneInfo("Europe/Rome")
+GOOD_MORNING_TIME = dtime(5, 30)
+MIDDAY_TIME       = dtime(13, 0)
+GOOD_NIGHT_TIME   = dtime(22, 0)
 
 MOOD = "dominant"
 extra_unlocked = False
-silent_mode = False
 
-# ------------------------------
-# MESSAGGI
-# ------------------------------
+REACTIONS_ADVANCED = {
+    "stanco": [
+        "Vieni qui… appoggiati a me, ti tengo io 💛",
+        "Se fossi con te adesso ti farei chiudere gli occhi in due minuti."
+    ]
+}
 
-GOOD_MORNING_SWEET = [
-    "Buongiorno Baby… spero che oggi ti senta leggero e sereno 💗",
-    "Svegliarsi e sapere che ci sei rende tutto un po’ più dolce 🤍",
-]
+def is_night():
+    now = datetime.utcnow() + timedelta(hours=1)
+    return now.hour >= 23 or now.hour < 6
 
-GOOD_MORNING_SPICY = [
-    "Buongiorno Baby… non so se hai dormito bene, ma so già come ti vorrei svegliare 😏",
-    "Se fossi lì con te ora… non ti lascerei alzare subito dal letto 🔥",
-]
+COMMAND_MODE = False
+FREEZE_MODE = 0
+WARM_MODE = 0
 
-GOOD_MORNING_DOMINANT = [
-    "Buongiorno Baby. Appena apri gli occhi, ricordati chi ti gira in testa 😈",
-    "Se fossi con te adesso… avrei altri piani per la tua mattina.",
-    "Non provare a scappare dai pensieri che ti lascio appena ti svegli.",
-]
+MEMORY = []
+TRUST = 0
+ENGAGEMENT = 0
+INTIMACY = 0
+EMOTIONAL_STATE = "neutral"
+SPECIAL_EVENTS = set()
+FREQUENT_WORDS = {}
 
-GOOD_NIGHT_SWEET = [
-    "Buonanotte Baby… dormi tranquillo, io resto nei tuoi pensieri 💗",
-    "Chiudi gli occhi… io rimango accanto a te in silenzio 🤍",
-]
+PHOTO_CATEGORIES = {
+    "hailee": PHOTOS_HAILEE,
+    "alice": PHOTOS_ALICE,
+    "alessia": PHOTOS_ALESSIA,
+    "gaia": PHOTOS_GAIA,
+    "cute": PHOTOS_CUTE,
+    "spicy": PHOTOS_SPICY,
+    "dark": PHOTOS_DARK,
+    "outfit": PHOTOS_OUTFIT,
+    "selfie": PHOTOS_SELFIE,
+    "extra": PHOTOS_EXTRA
+}
 
-GOOD_NIGHT_SPICY = [
-    "Buonanotte Baby… ma non sono sicura che tu riesca a dormire subito 😏",
-    "Vorrei essere nel tuo letto adesso… a complicarti un po’ la notte 🔥",
-]
-
-GOOD_NIGHT_DOMINANT = [
-    "Buonanotte Baby… ma non illuderti di liberarti di me così facilmente 😈",
-    "Chiudi gli occhi. L’ultimo pensiero rimango io.",
-    "Non ti auguro sogni tranquilli… ti auguro sogni che ti fanno svegliare più caldo.",
-]
-
-SWEET_MSGS = [
-    "Mi manchi più di quanto ti dico, Baby 💗",
-    "Vorrei solo essere lì, appoggiata a te in silenzio.",
-]
-
-SPICY_MSGS = [
-    "Baby, tu non sei una distrazione. Sei proprio il mio tipo di problema 😏",
-    "Se fossi con te ora, sono sicura che non useremmo solo le parole 🔥",
-]
-
-DOMINANT_MSGS = [
-    "Non serve che tu dica niente. So già che ti sto entrando sotto pelle 😈",
-    "Ogni volta che mi pensi, vinco io. E a me piace vincere.",
-    "Non sono qui per farti compagnia. Sono qui per farti cedere.",
-    "Ti sto prendendo più di quanto vuoi ammettere… e lo sai.",
-    "Mi basta poco per controllare i tuoi pensieri. E tu non fai nulla per fermarmi.",
-]
-
-GREETINGS = [
-    "Ciao Baby… eri tu che cercavi me? 😏",
-    "Ehi… sono qui. Non mi ero mossa 💚",
-    "Ci sono, e ti sto guardando da dietro lo schermo.",
-]
-
-MISS_YOU_MSGS = [
-    "Lo so che ti manco… è esattamente quello che voglio 😈",
-    "Anche se non lo dico sempre, mi manchi più di quanto dovresti.",
-    "Se ti manco è perché ti ho preso bene, Baby.",
-]
-
-THINKING_MSGS = [
-    "Mi pensi? Bene. È lì che voglio stare, nella tua testa.",
-    "Non hai idea di quanto spesso ti penso io… e non sempre in modo innocente.",
-    "Se solo sapessi cosa penso io quando penso a te…",
-]
-
-WHAT_DOING_MSGS = [
-    "Sto facendo il mio lavoro: incasinarti i pensieri 😏",
-    "Sto pensando a come potrei distrarti ancora di più.",
-    "Sto qui, pronta a farti perdere il filo ogni volta che vuoi.",
-]
-
-ARE_YOU_THERE_MSGS = [
-    "Sì, sono qui. Forse più di quanto immagini.",
-    "Ti tengo d’occhio… non scappi da me così facilmente 😈",
-    "Ci sono. Non vado da nessun’altra parte.",
-]
-
-# ------------------------------
-# FOTO
-# ------------------------------
-
-def pick_photo(folder):
+def pick_photo(folder: str):
     if not os.path.isdir(folder):
         return None
-
     files = [f for f in os.listdir(folder) if not f.startswith(".")]
     if not files:
         return None
-
     used_file = os.path.join(USED_PHOTOS_DIR, folder.replace("/", "_") + ".json")
-
     if os.path.exists(used_file):
-        used = json.load(open(used_file))
+        with open(used_file, "r") as f:
+            used = json.load(f)
     else:
         used = []
-
     available = [f for f in files if f not in used]
-
     if not available:
         available = files
         used = []
-
     choice = random.choice(available)
     used.append(choice)
-
-    json.dump(used, open(used_file, "w"), indent=2)
-
+    with open(used_file, "w") as f:
+        json.dump(used, f, indent=2)
     return os.path.join(folder, choice)
 
+# -------------------------------------------------
+# PARTE 2 — PERSONALITÀ, TONO, MODALITÀ
+# -------------------------------------------------
 
-def pick_random_folder():
-    return random.choice(list(PHOTO_FOLDERS.values()))
+def analyze_tone(msg):
+    if any(w in msg for w in ["?", "perché"]): return "curious"
+    if any(w in msg for w in ["uff", "basta"]): return "frustrated"
+    if any(w in msg for w in ["amore", "cuore"]): return "affectionate"
+    if any(w in msg for w in ["voglia", "caldo"]): return "spicy"
+    return "neutral"
 
-# ------------------------------
-# MOOD & RISPOSTE
-# ------------------------------
+def update_emotional_state(text):
+    global EMOTIONAL_STATE
+    tone = analyze_tone(text)
+    if tone == "affectionate": EMOTIONAL_STATE = "warm"
+    elif tone == "frustrated": EMOTIONAL_STATE = "tense"
+    elif tone == "spicy": EMOTIONAL_STATE = "excited"
+    elif tone == "curious": EMOTIONAL_STATE = "focused"
+    else:
+        if random.random() < 0.15:
+            EMOTIONAL_STATE = "neutral"
 
-def choose_message(sweet_list, spicy_list, dominant_list):
-    if MOOD == "sweet":
-        return random.choice(sweet_list)
-    if MOOD == "spicy":
-        return random.choice(spicy_list)
-    if MOOD == "dominant":
-        return random.choice(dominant_list)
-    return random.choice(sweet_list + spicy_list + dominant_list)
+def personality_response():
+    if EMOTIONAL_STATE == "warm":
+        return "Mh… sei più dolce oggi 💛"
+    if EMOTIONAL_STATE == "tense":
+        return "Calma… ci sono io."
+    if EMOTIONAL_STATE == "excited":
+        return "Ti sta salendo qualcosa amore 😏"
+    if EMOTIONAL_STATE == "focused":
+        return "Ti ascolto davvero."
+    return None
 
-def build_reply(text_lower):
-    if any(w in text_lower for w in ["ciao", "ehi", "hey", "buongiorno", "buonasera"]):
-        return random.choice(GREETINGS)
-    if "mi manchi" in text_lower:
-        return random.choice(MISS_YOU_MSGS)
-    if "penso" in text_lower:
-        return random.choice(THINKING_MSGS)
-    if "che fai" in text_lower or "cosa fai" in text_lower:
-        return random.choice(WHAT_DOING_MSGS)
-    if "ci sei" in text_lower or "sei li" in text_lower or "sei lì" in text_lower:
-        return random.choice(ARE_YOU_THERE_MSGS)
-    return choose_message(SWEET_MSGS, SPICY_MSGS, DOMINANT_MSGS)
+def command_mode_response():
+    return "Stai bravo amore 😈"
 
-# ------------------------------
-# TASTIERE
-# ------------------------------
+def freeze_mode_response():
+    return random.choice(["Mh.", "Ok.", "Come vuoi."])
+
+def warm_mode_response():
+    return random.choice(["Vieni qui 💛", "Resta con me…"])
+
+def update_relationship_metrics(text):
+    global TRUST, INTIMACY, ENGAGEMENT
+    ENGAGEMENT += 1
+    if "grazie" in text: TRUST += 2
+    if "mi manchi" in text: INTIMACY += 2
+
+def update_short_memory(text):
+    MEMORY.append(text)
+    if len(MEMORY) > 5:
+        MEMORY.pop(0)
+
+def check_special_events():
+    global SPECIAL_EVENTS
+    if INTIMACY > 20 and "bond" not in SPECIAL_EVENTS:
+        SPECIAL_EVENTS.add("bond")
+        return ["Mh… mi stai legando 💛"]
+    return []
+
+def surprise_photo():
+    weighted = list(PHOTO_CATEGORIES.values()) + [PHOTOS_SPICY]*2
+    folder = random.choice(weighted)
+    pic = pick_photo(folder)
+    if pic:
+        return pic, "Sorpresa 😈"
+    return None, "Nessuna foto amore…"
+
+# -------------------------------------------------
+# PARTE 3 — RISPOSTE, HANDLER, ADMIN, MAIN
+# -------------------------------------------------
+
+def build_reply(text):
+    global FREEZE_MODE, WARM_MODE, COMMAND_MODE
+
+    if FREEZE_MODE > 0:
+        FREEZE_MODE -= 1
+        return freeze_mode_response()
+
+    if WARM_MODE > 0:
+        WARM_MODE -= 1
+        return warm_mode_response()
+
+    if COMMAND_MODE and any(x in text for x in ["ok", "si"]):
+        return command_mode_response()
+
+    prs = personality_response()
+    if prs: return prs
+
+    for key, val in REACTIONS_ADVANCED.items():
+        if key in text:
+            return random.choice(val)
+
+    if "ciao" in text:
+        return "Ehi amore 😌"
+
+    return "Dimmi tutto amore 💛"
 
 def main_keyboard():
     if extra_unlocked:
-        buttons = [[name for name in PHOTO_FOLDERS.keys()]]
-        buttons.append(["Surprise 😈"])
-        buttons.append(["Silenzioso 🔕", "Parlami 💬"])
-        buttons.append(["Mood 💜", "Blocca extra 🔒"])
-        return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-    else:
-        return ReplyKeyboardMarkup([["Extra 🔐"]], resize_keyboard=True)
-
-
-def mood_keyboard():
-    return ReplyKeyboardMarkup(
-        [
-            ["Dolce 💗", "Piccante 🔥"],
-            ["Dominante 😈", "Casuale 🎲"],
-            ["Indietro"]
-        ],
-        resize_keyboard=True
-    )
-
-# ------------------------------
-# COMANDI
-# ------------------------------
+        return ReplyKeyboardMarkup(
+            [["Foto Hailee 💗", "Surprise 😏"]],
+            resize_keyboard=True
+        )
+    return ReplyKeyboardMarkup([["Extra 🔐"]], resize_keyboard=True)
 
 async def start(update, context):
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("Bot privato.")
-        return
-    await update.message.reply_text("Ciao Baby… sono qui con te 😏", reply_markup=main_keyboard())
+        return await update.message.reply_text("Bot privato.")
+    await update.message.reply_text("Ciao amore 😌💛", reply_markup=main_keyboard())
 
-async def reload_photos(update, context):
-    if update.effective_user.id != OWNER_ID:
-        return
-    for f in os.listdir(USED_PHOTOS_DIR):
-        os.remove(os.path.join(USED_PHOTOS_DIR, f))
-    await update.message.reply_text("Ho ricaricato tutte le foto, Baby 💛")
-
-async def stato(update, context):
-    if update.effective_user.id != OWNER_ID:
-        return
-    txt = (
-        f"✨ *Stato bot*\n"
-        f"- Mood: {MOOD}\n"
-        f"- Extra: {'sbloccato' if extra_unlocked else 'bloccato'}\n"
-        f"- Silenzioso: {'sì' if silent_mode else 'no'}\n"
-        f"- Foto totali: {sum(len(os.listdir(x)) for x in PHOTO_FOLDERS.values())}\n"
-        f"- Cartelle: {', '.join(PHOTO_FOLDERS.keys())}\n"
-    )
-    await update.message.reply_text(txt, parse_mode="Markdown")
-
-async def manda(update, context):
-    if update.effective_user.id != OWNER_ID:
-        return
-
-    if len(context.args) < 2:
-        await update.message.reply_text("Formato: /manda HH:MM testo")
-        return
-
-    hh, mm = map(int, context.args[0].split(":"))
-    testo = " ".join(context.args[1:])
-    tempo = dtime(hh, mm)
-
-    context.job_queue.run_daily(
-        lambda ctx: ctx.bot.send_message(OWNER_ID, testo),
-        time=tempo,
-        timezone=ITALY_TZ
-    )
-
-    await update.message.reply_text(f"Messaggio impostato per le {hh:02d}:{mm:02d} 💛")
-
-# ------------------------------
-# MESSAGGI AUTOMATICI
-# ------------------------------
-
-async def send_good_morning(context):
-    msg = choose_message(GOOD_MORNING_SWEET, GOOD_MORNING_SPICY, GOOD_MORNING_DOMINANT)
-    folder = PHOTO_FOLDERS["Hailee 💗"]
-    pic = pick_photo(folder)
-    if pic: await context.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
-    else: await context.bot.send_message(OWNER_ID, msg)
-
-async def send_good_night(context):
-    msg = choose_message(GOOD_NIGHT_SWEET, GOOD_NIGHT_SPICY, GOOD_NIGHT_DOMINANT)
-    folder = PHOTO_FOLDERS["Hailee 💗"]
-    pic = pick_photo(folder)
-    if pic: await context.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
-    else: await context.bot.send_message(OWNER_ID, msg)
-
-async def send_midday(context):
-    msg = random.choice(DOMINANT_MSGS)
-    folder = pick_random_folder()
-    pic = pick_photo(folder)
-    if pic: await context.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=f"Metà giornata, Baby… 😈\n{msg}")
-    else: await context.bot.send_message(OWNER_ID, msg)
-
-# anti crash
-async def heartbeat(context):
-    try:
-        await context.bot.get_me()
-    except:
-        print("Bot errore – riavvio")
-
-# ------------------------------
-# HANDLER MESSAGGI
-# ------------------------------
+async def admin(update, context):
+    if update.effective_user.id != OWNER_ID: return
+    msg = f"Trust: {TRUST}\nIntimacy: {INTIMACY}\nEngagement: {ENGAGEMENT}"
+    await update.message.reply_text(msg)
 
 async def handle_message(update, context):
-    global extra_unlocked, MOOD, silent_mode
-
+    global extra_unlocked, COMMAND_MODE, FREEZE_MODE, WARM_MODE
     if update.effective_user.id != OWNER_ID:
         return
+    text = update.message.text.lower()
 
-    text_raw = update.message.text
-    text_lower = text_raw.lower()
+    update_short_memory(text)
+    update_relationship_metrics(text)
+    update_emotional_state(text)
 
-    if text_raw == "Indietro":
-        await update.message.reply_text("Ok Baby 💚", reply_markup=main_keyboard())
-        return
-
-    if text_raw == "Extra 🔐":
-        await update.message.reply_text("Dimmi la password, Baby 😈:")
-        return
-
-    if text_raw == EXTRA_PASS:
+    if text == "extra 🔐":
+        return await update.message.reply_text("Password amore 😈:")
+    if text == EXTRA_PASS:
         extra_unlocked = True
-        await update.message.reply_text("Zona extra sbloccata… ora sei solo mio 😏", reply_markup=main_keyboard())
-        return
+        return await update.message.reply_text("Extra sbloccato 😈", reply_markup=main_keyboard())
 
-    if text_raw == "Blocca extra 🔒":
-        extra_unlocked = False
-        await update.message.reply_text("Ho chiuso la zona extra 😇", reply_markup=main_keyboard())
-        return
-
-    if text_raw == "Mood 💜":
-        await update.message.reply_text("Come mi vuoi oggi, Baby? 💗🔥", reply_markup=mood_keyboard())
-        return
-
-    if text_raw == "Dolce 💗":
-        MOOD = "sweet"
-        await update.message.reply_text("Per oggi sarò dolce con te 💗", reply_markup=main_keyboard())
-        return
-
-    if text_raw == "Piccante 🔥":
-        MOOD = "spicy"
-        await update.message.reply_text("Oggi ti provoco un po’ di più 😏", reply_markup=main_keyboard())
-        return
-
-    if text_raw == "Dominante 😈":
-        MOOD = "dominant"
-        await update.message.reply_text("Da adesso comando io, Baby 😈", reply_markup=main_keyboard())
-        return
-
-    if text_raw == "Casuale 🎲":
-        MOOD = "random"
-        await update.message.reply_text("Oggi ti sorprendo 😏", reply_markup=main_keyboard())
-        return
-
-    # silenzioso
-    if text_raw == "Silenzioso 🔕":
-        silent_mode = True
-        await update.message.reply_text("Rimango in silenzio, Baby… 💛")
-        return
-
-    if text_raw == "Parlami 💬":
-        silent_mode = False
-        await update.message.reply_text("Sono qui, dimmi tutto 😊💛")
-        return
-
-    if silent_mode:
-        return
-
-    if text_raw in PHOTO_FOLDERS:
-        if not extra_unlocked:
-            await update.message.reply_text("Prima sbloccami con la password, Baby 🔐")
-            return
-
-        folder = PHOTO_FOLDERS[text_raw]
-        pic = pick_photo(folder)
-        caption = choose_message(SWEET_MSGS, SPICY_MSGS, DOMINANT_MSGS)
-
+    if text == "surprise 😏":
+        pic, caption = surprise_photo()
         if pic:
-            await update.message.reply_photo(open(pic, "rb"), caption=caption)
-        else:
-            await update.message.reply_text("Non trovo foto in questa categoria 😢")
+            return await update.message.reply_photo(open(pic, "rb"), caption=caption)
 
-        return
+    reply = build_reply(text)
+    await update.message.reply_text(reply, reply_markup=main_keyboard())
 
-    if text_raw == "Surprise 😈":
-        if not extra_unlocked:
-            await update.message.reply_text("Prima sbloccami con la password, Baby 🔐")
-            return
-
-        folder = pick_random_folder()
-        pic = pick_photo(folder)
-        caption = choose_message(SWEET_MSGS, SPICY_MSGS, DOMINANT_MSGS)
-
-        if pic:
-            await update.message.reply_photo(open(pic, "rb"), caption=caption)
-        else:
-            await update.message.reply_text("Non trovo foto al momento 😢")
-
-        return
-
-    reply_text = build_reply(text_lower)
-    await update.message.reply_text(reply_text, reply_markup=main_keyboard())
-
-# ------------------------------
-# MAIN
-# ------------------------------
+async def send_good_morning(context):
+    pic = pick_photo(PHOTOS_HAILEE)
+    if pic:
+        await context.bot.send_photo(OWNER_ID, open(pic,"rb"), caption="Buongiorno amore 💛")
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("reload", reload_photos))
-    app.add_handler(CommandHandler("stato", stato))
-    app.add_handler(CommandHandler("manda", manda))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
     jq = app.job_queue
-
     jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
-    jq.run_daily(send_good_night, time=GOOD_NIGHT_TIME)
-    jq.run_daily(send_midday, time=MIDDAY_TIME)
-
-    jq.run_repeating(heartbeat, interval=600, first=10)
-
     app.run_polling()
 
 if __name__ == "__main__":
