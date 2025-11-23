@@ -238,3 +238,28 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # --- FOTO HANDLER ---
+    if text_raw == "Foto 📸":
+        if not extra_unlocked:
+            await update.message.reply_text("Prima sbloccami con la password, Baby 🔐")
+            return
+        pic = pick_photo(PHOTOS_HAILEE)
+        if not pic:
+            await update.message.reply_text("Non trovo foto al momento 😢")
+            return
+        await update.message.reply_photo(open(pic, "rb"), caption=random.choice(SPICY_EXTRA + DOMINANT_EXTRA + DOMINANT_STRONG))
+        return
+
+    # --- SURPRISE HANDLER ---
+    if text_raw == "Surprise 😏":
+        if not extra_unlocked:
+            await update.message.reply_text("Prima sbloccami con la password, Baby 🔐")
+            return
+        folder = random.choice([PHOTOS_HAILEE, PHOTOS_EXTRA, PHOTOS_SPICY])
+        pic = pick_photo(folder)
+        if not pic:
+            await update.message.reply_text("Nessuna foto amore…")
+            return
+        await update.message.reply_photo(open(pic, "rb"), caption="Sorpresa 😈")
+        return
