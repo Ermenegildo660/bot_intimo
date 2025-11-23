@@ -30,6 +30,29 @@ GOOD_MORNING_TIME = dtime(5, 30)   # 06:30 italiane
 MIDDAY_TIME       = dtime(13, 0)   # 14:00 italiane
 GOOD_NIGHT_TIME   = dtime(22, 0)   # 23:00 italiane
 
+# -------- FRASI PERSONALIZZATE (OPZIONE B) --------
+
+GOOD_MORNING_MESSAGES = [
+    "Buongiorno amore 💛",
+    "Buongiorno vita mia 😌",
+    "Vorrei averti nel mio letto appena sveglio 💕",
+    "Ti voglio vicino già da stamattina 💛"
+]
+
+MIDDAY_MESSAGES = [
+    "Metà giornata amore 😏",
+    "Sto pensando a te proprio ora…",
+    "Mi mancano già le tue mani 😈",
+    "È metà giornata… fammi venire voglia di te 🔥"
+]
+
+GOOD_NIGHT_MESSAGES = [
+    "Vieni più vicino… stanotte sei mio 🌙",
+    "Appoggiati a me… dormi con me 🖤",
+    "La notte ti voglio tutto per me 😈",
+    "Stringimi… restiamo così fino a domattina 💛"
+]
+
 SUBMENU_OPEN = False
 extra_unlocked = False
 
@@ -92,6 +115,25 @@ async def start(update, context):
         return await update.message.reply_text("Bot privato.")
     await update.message.reply_text("Ciao amore 😌💛", reply_markup=main_keyboard())
 
+
+# --- Heat Level Detection ---
+def detect_heat_level(text):
+    triggers = ["voglia","caldo","bacio","toccami","stringimi","dominami","desidero"]
+    return sum(1 for t in triggers if t in text.lower())
+
+# --- Heat Reaction ---
+def heat_reaction(level):
+    if level >= 3:
+        return random.choice(DOMINANT_STRONG)
+    if level == 2:
+        return random.choice(SPICY_EXTRA)
+    return None
+
+# --- Night Intimacy Check ---
+def is_night_intimacy():
+    now = datetime.utcnow() + timedelta(hours=1)
+    return now.hour >= 22 or now.hour < 3
+
 async def handle_message(update, context):
     global extra_unlocked, SUBMENU_OPEN
 
@@ -105,7 +147,13 @@ async def handle_message(update, context):
 
     if text == EXTRA_PASS:
         extra_unlocked = True
-        return await update.message.reply_text("Extra sbloccato 😏", reply_markup=main_keyboard())
+        heat = detect_heat_level(text)
+    hr = heat_reaction(heat)
+    if hr:
+        return await update.message.reply_text(hr, reply_markup=main_keyboard())
+    if is_night_intimacy():
+        return await update.message.reply_text(random.choice(NIGHT_INTIMATE), reply_markup=main_keyboard())
+    return await update.message.reply_text("Dimmi tutto amore 💛", reply_markup=main_keyboard())
 
     if text == "foto 📸":
         SUBMENU_OPEN = True
@@ -113,7 +161,13 @@ async def handle_message(update, context):
 
     if text == "indietro ↩️":
         SUBMENU_OPEN = False
-        return await update.message.reply_text("Tornata al menu principale 💛", reply_markup=main_keyboard())
+        heat = detect_heat_level(text)
+    hr = heat_reaction(heat)
+    if hr:
+        return await update.message.reply_text(hr, reply_markup=main_keyboard())
+    if is_night_intimacy():
+        return await update.message.reply_text(random.choice(NIGHT_INTIMATE), reply_markup=main_keyboard())
+    return await update.message.reply_text("Dimmi tutto amore 💛", reply_markup=main_keyboard())
 
     if SUBMENU_OPEN:
         for label, folder in PHOTO_CATEGORIES.items():
@@ -132,6 +186,12 @@ async def handle_message(update, context):
             return await update.message.reply_photo(open(pic, "rb"), caption="Sorpresa 😈")
         return await update.message.reply_text("Non trovo foto per la sorpresa amore 😢")
 
+    heat = detect_heat_level(text)
+    hr = heat_reaction(heat)
+    if hr:
+        return await update.message.reply_text(hr, reply_markup=main_keyboard())
+    if is_night_intimacy():
+        return await update.message.reply_text(random.choice(NIGHT_INTIMATE), reply_markup=main_keyboard())
     return await update.message.reply_text("Dimmi tutto amore 💛", reply_markup=main_keyboard())
 
 
