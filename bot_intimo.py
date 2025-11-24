@@ -83,6 +83,7 @@ PHOTO_CATEGORIES = {
     "extra 📁": PHOTOS_EXTRA,
 }
 
+
 # -------------------------------------------------
 # FRASI PERSONALIZZATE
 # -------------------------------------------------
@@ -149,6 +150,7 @@ HORN_AUTO_LINES_2 = [
     "Se fossi accanto a te ora… non staremmo fermi sul telefono 😮‍💨",
 ]
 
+
 # -------------------------------------------------
 # FUNZIONI ORA-BASED
 # -------------------------------------------------
@@ -158,10 +160,12 @@ def is_afternoon_horny():
     now_it = now_utc + timedelta(hours=1)
     return (now_it.weekday() < 5) and (16 <= now_it.hour < 18)
 
+
 def is_night_time():
     now_utc = datetime.utcnow()
     now_it = now_utc + timedelta(hours=1)
     return (now_it.hour >= 22) or (now_it.hour < 3)
+
 
 # -------------------------------------------------
 # FOTO & MENU
@@ -314,6 +318,7 @@ def generate_ai_reply(user_text: str) -> str:
     except Exception:
         # Se l'IA va in errore, fai una risposta di fallback
         return "Oggi sono un po' confusa… ma sono sempre qui con te amore 💛"
+
 
 # -------------------------------------------------
 # HANDLER /START
@@ -492,7 +497,7 @@ def main():
 
     # Handler
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Job Queue
     jq = app.job_queue
