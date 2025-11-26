@@ -15,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-import openai  # IA
+from openai import OpenAI  # IA client
 
 
 # -------------------------------------------------
@@ -27,8 +27,12 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "361555418"))
 EXTRA_PASS = os.environ.get("EXTRA_PASS", "hailee_2025")
 
 # API KEY IA (presa da Railway)
-openai.api_key = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o")
+
+client = None
+if OPENAI_API_KEY:
+    client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 # -------------------------------------------------
@@ -155,13 +159,13 @@ HORN_AUTO_LINES_2 = [
 # FUNZIONI ORA-BASED
 # -------------------------------------------------
 
-def is_afternoon_horny():
+def is_afternoon_horny() -> bool:
     now_utc = datetime.utcnow()
     now_it = now_utc + timedelta(hours=1)
     return (now_it.weekday() < 5) and (16 <= now_it.hour < 18)
 
 
-def is_night_time():
+def is_night_time() -> bool:
     now_utc = datetime.utcnow()
     now_it = now_utc + timedelta(hours=1)
     return (now_it.hour >= 22) or (now_it.hour < 3)
@@ -254,7 +258,7 @@ def generate_ai_reply(user_text: str) -> str:
     - ma anche dolce / dominante / gelosa / coccolosa / dark a seconda di come scrive l'utente
     - tiene conto dell'orario (pomeriggio horny / notte)
     """
-    if not openai.api_key:
+    if client is None:
         # Se manca la chiave, non crashare il bot
         return "Dimmi tutto amore 💛"
 
@@ -306,12 +310,12 @@ def generate_ai_reply(user_text: str) -> str:
     ]
 
     try:
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model=AI_MODEL,
             messages=messages,
             temperature=0.9,
         )
-        reply = completion["choices"][0]["message"]["content"].strip()
+        reply = completion.choices[0].message.content.strip()
         if not reply:
             return "Ti voglio troppo bene amore 💛"
         return reply
