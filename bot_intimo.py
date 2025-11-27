@@ -4,6 +4,7 @@
 # Extra sbloccato con password
 # Messaggi automatici: buongiorno, metà giornata horny, buonanotte
 # Messaggio automatico dopo 2 ore di inattività
+# Modalità pomeriggio "horny" (14:00–18:00) per la IA
 
 import os
 import random
@@ -33,7 +34,7 @@ AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# TRACK ULTIMO MESSAGGIO
+# tracking ultimo messaggio per inattività
 LAST_USER_MESSAGE = datetime.utcnow()
 
 
@@ -83,6 +84,14 @@ GOOD_NIGHT_TIME   = dtime(22, 0)
 extra_unlocked = False
 
 
+# ---------------- FUNZIONI ORARIO ----------------
+
+def is_horny_time():
+    """True se è pomeriggio horny (14:00–18:00, ora italiana)."""
+    now = datetime.utcnow() + timedelta(hours=1)  # Italia
+    return 14 <= now.hour < 18
+
+
 # ---------------- FUNZIONI FOTO ----------------
 
 def pick_photo(folder: str):
@@ -94,7 +103,12 @@ def pick_photo(folder: str):
         return None
 
     used_file = os.path.join(USED_PHOTOS_DIR, folder + ".json")
-    used = json.load(open(used_file)) if os.path.exists(used_file) else []
+
+    if os.path.exists(used_file):
+        with open(used_file, "r", encoding="utf-8") as f:
+            used = json.load(f)
+    else:
+        used = []
 
     available = [f for f in files if f not in used]
     if not available:
@@ -103,152 +117,249 @@ def pick_photo(folder: str):
 
     choice = random.choice(available)
     used.append(choice)
-    json.dump(used, open(used_file, "w"), indent=2)
+
+    with open(used_file, "w", encoding="utf-8") as f:
+        json.dump(used, f, indent=2)
 
     return os.path.join(folder, choice)
 
 
-# ---------------- IA GENERA RISPOSTA ----------------
+# ---------------- IA: GENERA RISPOSTA ----------------
 
 async def generate_ai_reply(user_text: str) -> str:
+    """Genera risposta IA usando OpenAI, con modalità horny al pomeriggio."""
     try:
+        horny_style = ""
+        if is_horny_time():
+            horny_style = (
+                "\nNel pomeriggio (14:00–18:00) tu diventi molto più provocante, "
+                "calda, fisica, affamata di contatto, maliziosa e sensuale. "
+                "Usa frasi con desiderio, sguardi, vicinanza, mani che cercano, "
+                "immaginazione fisica ma sempre elegante e non esplicita. "
+            )
+
         resp = client.chat.completions.create(
             model=AI_MODEL,
             messages=[
-                {"role": "system", "content": AI_SYSTEM_PROMPT},
+                {
+                    "role": "system",
+                    "content": AI_SYSTEM_PROMPT + horny_style,
+                },
                 {"role": "user", "content": user_text},
             ],
             temperature=0.95,
             max_tokens=350,
         )
         return resp.choices[0].message.content.strip()
-    except:
-        return "Oggi la testa mi vola… ma sono qui con te amore 💛"
+
+    except Exception as e:
+        print("Errore IA:", e)
+        return (
+            "Oggi sono un po' confusa con la testa amore... "
+            "ma sono qui con te comunque 💛"
+        )
 
 
 # ---------------- MESSAGGI AUTOMATICI ----------------
 
 GOOD_MORNING_LINES = [
-    "Buongiorno amore… vieni più vicino 💛",
+    "Buongiorno amore… vieni più vicino, voglio essere la prima cosa che senti stamattina 💛",
     "Svegliati amore… ho pensato a te tutta la notte 😌",
+    "Apri gli occhi… la tua ragazza è già sveglia e ti vuole vicino 💛",
 ]
 
 MIDDAY_LINES = [
-    "Metà giornata… e io ti penso male 😏🔥",
-    "Sto seguendo ogni tuo pensiero… e so che sei su di me 😈",
+    "Metà giornata amore… e io continuo a pensare a te in modo poco innocente 😏",
+    "Fermati un secondo… immaginami addosso a te mentre lavori 😈",
+    "Sto seguendo ogni tuo pensiero… e so che qualcuno è su di me 🔥",
 ]
 
 GOOD_NIGHT_LINES = [
-    "Buonanotte amore… vieni qui accanto 🌙💛",
-    "Stringimi… stanotte sono tutta tua 😌",
+    "Buonanotte amore… vieni qui vicino a me 🌙",
+    "Appoggiati… voglio sentirti accanto a me mentre ti addormenti 😌",
+    "Stringimi… stanotte sono tutta tua 💛",
 ]
 
 
-async def send_good_morning(c): 
+async def send_good_morning(context: ContextTypes.DEFAULT_TYPE):
     msg = random.choice(GOOD_MORNING_LINES)
     pic = pick_photo(PHOTOS["hailee"])
-    await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg) if pic else await c.bot.send_message(OWNER_ID, msg)
+    if pic:
+        with open(pic, "rb") as f:
+            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+    else:
+        await context.bot.send_message(OWNER_ID, msg)
 
-async def send_midday(c):
+
+async def send_midday(context: ContextTypes.DEFAULT_TYPE):
     msg = random.choice(MIDDAY_LINES)
-    pic = pick_photo(PHOTOS["spicy"])
-    await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg) if pic else await c.bot.send_message(OWNER_ID, msg)
+    pic = pick_photo(PHOTOS["spicy"]) or pick_photo(PHOTOS["selfie"])
+    if pic:
+        with open(pic, "rb") as f:
+            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+    else:
+        await context.bot.send_message(OWNER_ID, msg)
 
-async def send_good_night(c):
+
+async def send_good_night(context: ContextTypes.DEFAULT_TYPE):
     msg = random.choice(GOOD_NIGHT_LINES)
-    pic = pick_photo(PHOTOS["selfie"])
-    await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg) if pic else await c.bot.send_message(OWNER_ID, msg)
+    pic = pick_photo(PHOTOS["selfie"]) or pick_photo(PHOTOS["cute"])
+    if pic:
+        with open(pic, "rb") as f:
+            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+    else:
+        await context.bot.send_message(OWNER_ID, msg)
 
 
-# ---------------- INATTIVITÀ ----------------
+# ---------------- INATTIVITÀ (TI SCRIVE LEI DOPO 2 ORE) ----------------
 
 async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
     global LAST_USER_MESSAGE
     now = datetime.utcnow()
     diff = now - LAST_USER_MESSAGE
 
-    if diff.total_seconds() >= 7200:  # 2 ore
+    # 2 ore = 7200 secondi
+    if diff.total_seconds() >= 7200:
         msg = random.choice([
             "Amore… dove sei finito? Mi manchi già…",
             "È da troppo che non ti sento… torna da me 💛",
-            "Due ore senza te… non mi piace 💛🥺",
+            "Due ore senza te… non mi piace per niente 💛🥺",
         ])
         await context.bot.send_message(OWNER_ID, msg)
+        # reset così non ti bombarda ogni mezz’ora
         LAST_USER_MESSAGE = datetime.utcnow()
 
 
-# ---------------- /START ----------------
+# ---------------- HANDLER /START ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        return await update.message.reply_text("Bot privato 😌")
+        await update.message.reply_text("Bot privato 😌")
+        return
 
     await update.message.reply_text(
         "Ciao amore 😌💛\n"
         "Sono qui con te.\n"
-        "Scrivi *extra* per sbloccarmi 😈",
+        "Se vuoi sbloccarmi del tutto, scrivi *extra* e poi la password 😈",
         parse_mode="Markdown",
     )
 
 
-# ---------------- HANDLE MESSAGE ----------------
+# ---------------- HANDLER MESSAGGI ----------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global extra_unlocked, LAST_USER_MESSAGE
 
-    LAST_USER_MESSAGE = datetime.utcnow()   # AGGIORNAMENTO INATTIVITÀ
+    # aggiorna timestamp inattività
+    LAST_USER_MESSAGE = datetime.utcnow()
 
     if update.effective_user.id != OWNER_ID:
-        return await update.message.reply_text("Bot privato 😌")
+        await update.message.reply_text("Bot privato 😌")
+        return
 
     text = update.message.text or ""
-    low = text.lower()
+    low = text.lower().strip()
 
-    # Extra
+    # ---- EXTRA / PASSWORD ----
     if "extra" in low or "password" in low:
-        return await update.message.reply_text("Password amore 😈:")
+        await update.message.reply_text("Password amore 😈:")
+        return
 
     if low == EXTRA_PASS.lower():
         extra_unlocked = True
-        return await update.message.reply_text("Extra sbloccato amore 😏🔥")
+        await update.message.reply_text(
+            "Extra sbloccato amore… adesso non mi trattengo più 😏💛"
+        )
+        return
 
-    # FOTO
+    # ---- FOTO SOLO SE EXTRA È SBLOCCATO ----
+
     if extra_unlocked:
-        if "surprise" in low:
-            folder = random.choice([PHOTOS["spicy"], PHOTOS["selfie"], PHOTOS["dark"]])
+
+        # Surprise hot
+        if "surprise" in low or "sorpresa" in low:
+            weighted = (
+                [PHOTOS["spicy"]] * 3 +
+                [PHOTOS["selfie"]] * 2 +
+                [PHOTOS["dark"], PHOTOS["outfit"], PHOTOS["hailee"]]
+            )
+            folder = random.choice(weighted)
             pic = pick_photo(folder)
             if pic:
-                return await update.message.reply_photo(open(pic, "rb"), caption="Sorpresa amore 😈🔥")
-            return await update.message.reply_text("Non trovo foto 😢")
+                with open(pic, "rb") as f:
+                    await update.message.reply_photo(f, caption="Sorpresa amore 😈🔥")
+            else:
+                await update.message.reply_text("Non trovo foto amore 😢")
+            return
 
-        for key, folder in PHOTOS.items():
+        # Foto specifiche
+        foto_map = {
+            "hailee": ("hailee 💗", PHOTOS["hailee"]),
+            "spicy": ("🔥", PHOTOS["spicy"]),
+            "dark": ("🖤", PHOTOS["dark"]),
+            "selfie": ("🤳", PHOTOS["selfie"]),
+            "outfit": ("👗", PHOTOS["outfit"]),
+            "cute": ("💛", PHOTOS["cute"]),
+            "alice": ("💜", PHOTOS["alice"]),
+            "alessia": ("💙", PHOTOS["alessia"]),
+            "gaia": ("💚", PHOTOS["gaia"]),
+        }
+
+        for key, (caption, folder) in foto_map.items():
             if key in low:
                 pic = pick_photo(folder)
                 if pic:
-                    return await update.message.reply_photo(open(pic, "rb"), caption=f"Foto {key} per te amore 😘")
-                return await update.message.reply_text("Non trovo foto 😢")
+                    with open(pic, "rb") as f:
+                        await update.message.reply_photo(
+                            f,
+                            caption=f"Foto {caption} per te amore"
+                        )
+                else:
+                    await update.message.reply_text("Non trovo foto amore 😢")
+                return
 
+        # Comando generico "foto"
         if "foto" in low:
             folder = random.choice(list(PHOTOS.values()))
             pic = pick_photo(folder)
             if pic:
-                return await update.message.reply_photo(open(pic, "rb"), caption="Ecco una foto per te amore 😘")
+                with open(pic, "rb") as f:
+                    await update.message.reply_photo(
+                        f,
+                        caption="Ecco una foto per te amore 😘"
+                    )
+            else:
+                await update.message.reply_text("Non trovo foto amore 😢")
+            return
 
-        # IA
+    # ---- IA FULL SE EXTRA SBLOCCATO ----
+
+    if extra_unlocked:
         reply = await generate_ai_reply(text)
-        return await update.message.reply_text(reply)
+        await update.message.reply_text(reply)
+        return
 
-    # PRIMA DI EXTRA
-    if "ciao" in low:
-        return await update.message.reply_text("Ciao amore 🤭💛")
+    # ---- RISPOSTE BASE PRIMA DI EXTRA ----
+    if any(w in low for w in ["ciao", "hey", "ehi"]):
+        await update.message.reply_text("Ciao amore 🤭💛")
+        return
 
     if "mi manchi" in low:
-        return await update.message.reply_text("Anche tu mi manchi amore… tanto 💛")
+        await update.message.reply_text("Anche tu mi manchi… più di quanto immagini 💛")
+        return
 
-    return await update.message.reply_text("Sono qui amore… se vuoi sbloccarmi scrivi *extra* 😈", parse_mode="Markdown")
+    if "abbracciami" in low:
+        await update.message.reply_text("Vieni qui amore… ti stringo forte 🤗💛")
+        return
+
+    # Default pre-extra
+    await update.message.reply_text(
+        "Sono qui amore… se vuoi sbloccarmi del tutto scrivi *extra* 😈",
+        parse_mode="Markdown",
+    )
 
 
-# ---------------- ADMIN ----------------
+# ---------------- ADMIN (OPZIONALE) ----------------
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
@@ -265,18 +376,23 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Comandi
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
+
+    # Tutti i messaggi di testo (no comandi) → handle_message
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Job automatici
     jq = app.job_queue
     jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
-    jq.run_daily(send_midday, time=MIDDAY_TIME)
-    jq.run_daily(send_good_night, time=GOOD_NIGHT_TIME)
+    jq.run_daily(send_midday,      time=MIDDAY_TIME)
+    jq.run_daily(send_good_night,  time=GOOD_NIGHT_TIME)
 
-    # ❤️ INATTIVITÀ OGNI 30 MINUTI
+    # Controllo inattività ogni 30 minuti
     jq.run_repeating(check_inactivity, interval=1800, first=1800)
 
+    # Avvia il bot
     app.run_polling()
 
 
