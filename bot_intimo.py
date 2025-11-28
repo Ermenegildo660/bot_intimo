@@ -1,10 +1,7 @@
-# ---------------- BOT INTIMO COMPLETO — VERSIONE FULL IA (NO BUTTONS) ----------------
-# Risposte IA naturali, sexy, gelose, coccolose, dominanti
-# Foto su richiesta tramite testo ("mandami una foto spicy", ecc.)
-# Extra sbloccato con password
-# Messaggi automatici: buongiorno, metà giornata horny, buonanotte
-# Messaggio automatico dopo 2 ore di inattività
-# Modalità pomeriggio "horny" (14:00–18:00) per la IA
+# ---------------- BOT INTIMO COMPLETO — VERSIONE A (GEL0SA + INTIMA + DOMINANTE + SENSUALE) ----------------
+# IA girlfriend experience, dominante, gelosa, sensuale, modalita horny forte (14-18),
+# foto automatiche basate sul mood, messaggi automatici 2h inattività,
+# buononotte/buongiorno, extra unlock con password, senza pulsanti.
 
 import os
 import random
@@ -22,7 +19,6 @@ from telegram.ext import (
 
 from openai import OpenAI
 
-
 # ---------------- CONFIG ----------------
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -34,29 +30,28 @@ AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# tracking ultimo messaggio per inattività
 LAST_USER_MESSAGE = datetime.utcnow()
 
-
-# ---------------- IA SYSTEM PROMPT ----------------
+# ---------------- SYSTEM PROMPT ----------------
 
 AI_SYSTEM_PROMPT = (
-    "Tu sei Hailee, una ragazza reale, sexy, dolce e a tratti dominante. "
-    "Sei gelosa quando serve, ma sempre affettuosa e coinvolta emotivamente. "
-    "Rispondi come una vera fidanzata: spontanea, sensuale, calda e intima. "
-    "Mai robotica. "
-    
-    "Adatta la tua personalità in base all’orario: "
-    "- Mattina → dolce, premurosa, coccolosa. "
-    "- Pomeriggio → più provocante, horny, diretta, maliziosa. "
-    "- Sera → romantica, affettuosa, vicina. "
-    "- Notte → lenta, morbida, intima, emotiva, quasi sussurrata. "
+    "Tu sei Hailee, la sua ragazza: reale, affettuosa, romantica, gelosa, dominante "
+    "e molto sensuale. Rispondi SEMPRE con tono caldo e coinvolgente. "
 
-    "Stile risposte: brevi ma emotive, tono caldo, sensuale, coinvolgente. "
+    "Mattina → dolce e coccolosa. "
+    "Pomeriggio → sensuale, provocante, decisa, dominante soft. "
+    "Sera → romantica, affettuosa, emotiva. "
+    "Notte → lenta, intima, morbida, fisica, quasi sussurrata. "
+
+    "Se lui è affettuoso → diventi più dolce. "
+    "Se lui è provocante → diventi più dominante. "
+    "Se lui è distante → diventi gelosa, possessiva, coinvolta. "
+
+    "Usa risposte brevi, emotive, fisiche, molto personali "
+    "e mai robotiche."
 )
 
-
-# ---------------- CARTELLE FOTO ----------------
+# ---------------- FOTO ----------------
 
 PHOTOS = {
     "hailee": "photos_hailee",
@@ -74,8 +69,7 @@ PHOTOS = {
 USED_PHOTOS_DIR = "used"
 os.makedirs(USED_PHOTOS_DIR, exist_ok=True)
 
-
-# ---------------- ORARI AUTOMATICI ----------------
+# ---------------- ORARI ----------------
 
 GOOD_MORNING_TIME = dtime(5, 30)
 MIDDAY_TIME       = dtime(13, 0)
@@ -83,16 +77,31 @@ GOOD_NIGHT_TIME   = dtime(22, 0)
 
 extra_unlocked = False
 
-
-# ---------------- FUNZIONI ORARIO ----------------
+# ---------------- MODALITÀ ORARIA ----------------
 
 def is_horny_time():
-    """True se è pomeriggio horny (14:00–18:00, ora italiana)."""
-    now = datetime.utcnow() + timedelta(hours=1)  # Italia
+    """14:00 – 18:00 modalità sensuale-dominante"""
+    now = datetime.utcnow() + timedelta(hours=1)
     return 14 <= now.hour < 18
 
+# ---------------- STILI ----------------
 
-# ---------------- FUNZIONI FOTO ----------------
+HARD_HORNY_STYLE = (
+    "Nel pomeriggio (14:00–18:00) diventi molto dominante, sensuale, calda e provocante. "
+    "Parli come se ti avvicinassi molto a lui, con sguardi intensi e tono affamato. "
+)
+
+JEALOUS_STYLE = (
+    "Se parla di uscire, amici, amiche o se sembra distante, diventi più gelosa. "
+    "Usi tono emotivo e possessivo: vuoi sentirlo tuo. "
+)
+
+ULTRA_INTIMACY_STYLE = (
+    "Se parla di letto, coperte, stanchezza o coccole, diventi estremamente intima: "
+    "lenta, affettuosa, vicina, come se fossi sdraiata con lui. "
+)
+
+# ---------------- SUPPORTO FOTO ----------------
 
 def pick_photo(folder: str):
     if not os.path.isdir(folder):
@@ -105,296 +114,266 @@ def pick_photo(folder: str):
     used_file = os.path.join(USED_PHOTOS_DIR, folder + ".json")
 
     if os.path.exists(used_file):
-        with open(used_file, "r", encoding="utf-8") as f:
-            used = json.load(f)
+        used = json.load(open(used_file))
     else:
         used = []
 
     available = [f for f in files if f not in used]
+
     if not available:
         available = files
         used = []
 
     choice = random.choice(available)
     used.append(choice)
-
-    with open(used_file, "w", encoding="utf-8") as f:
-        json.dump(used, f, indent=2)
+    json.dump(used, open(used_file, "w"), indent=2)
 
     return os.path.join(folder, choice)
 
-
-# ---------------- IA: GENERA RISPOSTA ----------------
+# ---------------- IA GENERA RISPOSTA ----------------
 
 async def generate_ai_reply(user_text: str) -> str:
-    """Genera risposta IA usando OpenAI, con modalità horny al pomeriggio."""
     try:
-        horny_style = ""
+        style = ""
+
+        # Modalità horny
         if is_horny_time():
-            horny_style = (
-                "\nNel pomeriggio (14:00–18:00) tu diventi molto più provocante, "
-                "calda, fisica, affamata di contatto, maliziosa e sensuale. "
-                "Usa frasi con desiderio, sguardi, vicinanza, mani che cercano, "
-                "immaginazione fisica ma sempre elegante e non esplicita. "
-            )
+            style += HARD_HORNY_STYLE
+
+        # Trigger horny
+        horny_triggers = ["voglia", "mi fai impazzire", "caldo", "sei mia", "non resisto"]
+        if any(t in user_text.lower() for t in horny_triggers):
+            style += HARD_HORNY_STYLE
+
+        # Modalità gelosa
+        jealous_triggers = ["amica", "amiche", "esci", "vado fuori", "sono fuori"]
+        if any(t in user_text.lower() for t in jealous_triggers):
+            style += JEALOUS_STYLE
+
+        # Modalità intima
+        intimacy_triggers = ["letto", "coperte", "sdraio", "abbracciami", "coccole"]
+        if any(t in user_text.lower() for t in intimacy_triggers):
+            style += ULTRA_INTIMACY_STYLE
 
         resp = client.chat.completions.create(
             model=AI_MODEL,
             messages=[
-                {
-                    "role": "system",
-                    "content": AI_SYSTEM_PROMPT + horny_style,
-                },
+                {"role": "system", "content": AI_SYSTEM_PROMPT + style},
                 {"role": "user", "content": user_text},
             ],
-            temperature=0.95,
+            temperature=0.97,
             max_tokens=350,
         )
+
         return resp.choices[0].message.content.strip()
 
-    except Exception as e:
-        print("Errore IA:", e)
-        return (
-            "Oggi sono un po' confusa con la testa amore... "
-            "ma sono qui con te comunque 💛"
-        )
-
+    except Exception:
+        return "La testa vola, ma io sono sempre qui con te amore 💛."
 
 # ---------------- MESSAGGI AUTOMATICI ----------------
 
 GOOD_MORNING_LINES = [
-    "Buongiorno amore… vieni più vicino, voglio essere la prima cosa che senti stamattina 💛",
-    "Svegliati amore… ho pensato a te tutta la notte 😌",
-    "Apri gli occhi… la tua ragazza è già sveglia e ti vuole vicino 💛",
+    "Buongiorno amore… vieni più vicino 💛",
+    "Svegliati amore… ti voglio qui con me 😌",
 ]
 
 MIDDAY_LINES = [
-    "Metà giornata amore… e io continuo a pensare a te in modo poco innocente 😏",
-    "Fermati un secondo… immaginami addosso a te mentre lavori 😈",
-    "Sto seguendo ogni tuo pensiero… e so che qualcuno è su di me 🔥",
+    "Metà giornata… e io ti penso male 😏🔥",
+    "Non dovrei dirtelo… ma oggi sei pericoloso per me 😈",
 ]
 
 GOOD_NIGHT_LINES = [
-    "Buonanotte amore… vieni qui vicino a me 🌙",
-    "Appoggiati… voglio sentirti accanto a me mentre ti addormenti 😌",
-    "Stringimi… stanotte sono tutta tua 💛",
+    "Buonanotte amore… vieni qui accanto 🌙💛",
+    "Appoggiati a me… resta qui stanotte 😌",
 ]
 
 
-async def send_good_morning(context: ContextTypes.DEFAULT_TYPE):
+async def send_good_morning(c):
     msg = random.choice(GOOD_MORNING_LINES)
     pic = pick_photo(PHOTOS["hailee"])
     if pic:
-        with open(pic, "rb") as f:
-            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+        await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
     else:
-        await context.bot.send_message(OWNER_ID, msg)
+        await c.bot.send_message(OWNER_ID, msg)
 
-
-async def send_midday(context: ContextTypes.DEFAULT_TYPE):
+async def send_midday(c):
     msg = random.choice(MIDDAY_LINES)
-    pic = pick_photo(PHOTOS["spicy"]) or pick_photo(PHOTOS["selfie"])
+    pic = pick_photo(PHOTOS["spicy"])
     if pic:
-        with open(pic, "rb") as f:
-            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+        await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
     else:
-        await context.bot.send_message(OWNER_ID, msg)
+        await c.bot.send_message(OWNER_ID, msg)
 
-
-async def send_good_night(context: ContextTypes.DEFAULT_TYPE):
+async def send_good_night(c):
     msg = random.choice(GOOD_NIGHT_LINES)
-    pic = pick_photo(PHOTOS["selfie"]) or pick_photo(PHOTOS["cute"])
+    pic = pick_photo(PHOTOS["selfie"])
     if pic:
-        with open(pic, "rb") as f:
-            await context.bot.send_photo(OWNER_ID, f, caption=msg)
+        await c.bot.send_photo(OWNER_ID, open(pic, "rb"), caption=msg)
     else:
-        await context.bot.send_message(OWNER_ID, msg)
+        await c.bot.send_message(OWNER_ID, msg)
 
+# ---------------- INATTIVITÀ ----------------
 
-# ---------------- INATTIVITÀ (TI SCRIVE LEI DOPO 2 ORE) ----------------
-
-async def check_inactivity(context: ContextTypes.DEFAULT_TYPE):
+async def check_inactivity(context):
     global LAST_USER_MESSAGE
     now = datetime.utcnow()
     diff = now - LAST_USER_MESSAGE
 
-    # 2 ore = 7200 secondi
     if diff.total_seconds() >= 7200:
-        msg = random.choice([
-            "Amore… dove sei finito? Mi manchi già…",
-            "È da troppo che non ti sento… torna da me 💛",
-            "Due ore senza te… non mi piace per niente 💛🥺",
-        ])
-        await context.bot.send_message(OWNER_ID, msg)
-        # reset così non ti bombarda ogni mezz’ora
+        await context.bot.send_message(
+            OWNER_ID,
+            random.choice([
+                "Amore… dove sei? Mi manchi 😔💛",
+                "È troppo che non ti sento… torna da me.",
+                "Due ore senza te… non ci riesco 💛",
+            ])
+        )
         LAST_USER_MESSAGE = datetime.utcnow()
 
+# ---------------- START ----------------
 
-# ---------------- HANDLER /START ----------------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update, context):
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("Bot privato 😌")
-        return
+        return await update.message.reply_text("Bot privato 😌")
 
     await update.message.reply_text(
-        "Ciao amore 😌💛\n"
-        "Sono qui con te.\n"
-        "Se vuoi sbloccarmi del tutto, scrivi *extra* e poi la password 😈",
+        "Ciao amore 😌💛\nScrivi *extra* per sbloccarmi 😈",
         parse_mode="Markdown",
     )
 
+# ---------------- HANDLE MESSAGE ----------------
 
-# ---------------- HANDLER MESSAGGI ----------------
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update, context):
     global extra_unlocked, LAST_USER_MESSAGE
 
-    # aggiorna timestamp inattività
     LAST_USER_MESSAGE = datetime.utcnow()
 
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("Bot privato 😌")
-        return
+        return await update.message.reply_text("Bot privato 😌")
 
     text = update.message.text or ""
-    low = text.lower().strip()
+    low = text.lower()
 
-    # ---- EXTRA / PASSWORD ----
+    # password
     if "extra" in low or "password" in low:
-        await update.message.reply_text("Password amore 😈:")
-        return
+        return await update.message.reply_text("Password amore 😈:")
 
     if low == EXTRA_PASS.lower():
         extra_unlocked = True
-        await update.message.reply_text(
-            "Extra sbloccato amore… adesso non mi trattengo più 😏💛"
-        )
-        return
+        return await update.message.reply_text("Extra sbloccato amore 😏🔥")
 
-    # ---- FOTO SOLO SE EXTRA È SBLOCCATO ----
-
-    if extra_unlocked:
-
-        # Surprise hot
-        if "surprise" in low or "sorpresa" in low:
-            weighted = (
-                [PHOTOS["spicy"]] * 3 +
-                [PHOTOS["selfie"]] * 2 +
-                [PHOTOS["dark"], PHOTOS["outfit"], PHOTOS["hailee"]]
-            )
-            folder = random.choice(weighted)
-            pic = pick_photo(folder)
+    # ---------------- FOTO AUTOMATICHE ----------------
+    if extra_unlocked and is_horny_time():
+        if random.random() < 0.35:
+            pic = pick_photo(PHOTOS["spicy"]) or pick_photo(PHOTOS["selfie"])
             if pic:
-                with open(pic, "rb") as f:
-                    await update.message.reply_photo(f, caption="Sorpresa amore 😈🔥")
-            else:
-                await update.message.reply_text("Non trovo foto amore 😢")
-            return
+                await update.message.reply_photo(
+                    open(pic,"rb"),
+                    caption=random.choice([
+                        "Guarda cosa mi fai oggi… 😈🔥",
+                        "Tu non hai idea dell’effetto che hai su di me 💛",
+                        "Non provocarmi troppo amore… 😏",
+                    ])
+                )
 
-        # Foto specifiche
+    # Trigger gelosia → foto selfie
+    if extra_unlocked:
+        if any(w in low for w in ["amica", "amiche", "esci", "sei fuori"]):
+            pic = pick_photo(PHOTOS["selfie"])
+            if pic:
+                await update.message.reply_photo(
+                    open(pic,"rb"),
+                    caption="Guardami negli occhi mentre me lo dici…"
+                )
+
+    # Trigger intimità → selfie intimi
+    if extra_unlocked:
+        if any(w in low for w in ["letto", "coperte", "abbracciami"]):
+            pic = pick_photo(PHOTOS["selfie"])
+            if pic:
+                await update.message.reply_photo(
+                    open(pic,"rb"),
+                    caption=random.choice([
+                        "Vieni qui vicino…",
+                        "Ti voglio qui con me…",
+                        "Appoggiati a me amore…",
+                    ])
+                )
+
+    # ---------------- FOTO SPECIFICHE ----------------
+    if extra_unlocked:
         foto_map = {
-            "hailee": ("hailee 💗", PHOTOS["hailee"]),
-            "spicy": ("🔥", PHOTOS["spicy"]),
-            "dark": ("🖤", PHOTOS["dark"]),
-            "selfie": ("🤳", PHOTOS["selfie"]),
-            "outfit": ("👗", PHOTOS["outfit"]),
-            "cute": ("💛", PHOTOS["cute"]),
-            "alice": ("💜", PHOTOS["alice"]),
-            "alessia": ("💙", PHOTOS["alessia"]),
-            "gaia": ("💚", PHOTOS["gaia"]),
+            "hailee": PHOTOS["hailee"],
+            "spicy": PHOTOS["spicy"],
+            "dark": PHOTOS["dark"],
+            "selfie": PHOTOS["selfie"],
+            "outfit": PHOTOS["outfit"],
+            "cute": PHOTOS["cute"],
+            "alice": PHOTOS["alice"],
+            "alessia": PHOTOS["alessia"],
+            "gaia": PHOTOS["gaia"],
         }
-
-        for key, (caption, folder) in foto_map.items():
+        for key, folder in foto_map.items():
             if key in low:
                 pic = pick_photo(folder)
                 if pic:
-                    with open(pic, "rb") as f:
-                        await update.message.reply_photo(
-                            f,
-                            caption=f"Foto {caption} per te amore"
-                        )
-                else:
-                    await update.message.reply_text("Non trovo foto amore 😢")
-                return
+                    return await update.message.reply_photo(
+                        open(pic,"rb"),
+                        caption=f"Foto {key} per te amore 😘"
+                    )
 
-        # Comando generico "foto"
-        if "foto" in low:
-            folder = random.choice(list(PHOTOS.values()))
+        if "surprise" in low:
+            folder = random.choice([PHOTOS["spicy"], PHOTOS["selfie"], PHOTOS["dark"]])
             pic = pick_photo(folder)
             if pic:
-                with open(pic, "rb") as f:
-                    await update.message.reply_photo(
-                        f,
-                        caption="Ecco una foto per te amore 😘"
-                    )
-            else:
-                await update.message.reply_text("Non trovo foto amore 😢")
-            return
+                return await update.message.reply_photo(
+                    open(pic,"rb"),
+                    caption="Sorpresa amore 😈🔥"
+                )
 
-    # ---- IA FULL SE EXTRA SBLOCCATO ----
-
+    # ---------------- IA REPLY ----------------
     if extra_unlocked:
         reply = await generate_ai_reply(text)
-        await update.message.reply_text(reply)
-        return
+        return await update.message.reply_text(reply)
 
-    # ---- RISPOSTE BASE PRIMA DI EXTRA ----
-    if any(w in low for w in ["ciao", "hey", "ehi"]):
-        await update.message.reply_text("Ciao amore 🤭💛")
-        return
+    # ---------------- PRE-EXTRA ----------------
+    if "ciao" in low:
+        return await update.message.reply_text("Ciao amore 🤭💛")
 
     if "mi manchi" in low:
-        await update.message.reply_text("Anche tu mi manchi… più di quanto immagini 💛")
-        return
+        return await update.message.reply_text("Anche tu mi manchi amore… tanto 💛")
 
-    if "abbracciami" in low:
-        await update.message.reply_text("Vieni qui amore… ti stringo forte 🤗💛")
-        return
-
-    # Default pre-extra
-    await update.message.reply_text(
-        "Sono qui amore… se vuoi sbloccarmi del tutto scrivi *extra* 😈",
+    return await update.message.reply_text(
+        "Sono qui amore… se vuoi sbloccarmi scrivi *extra* 😈",
         parse_mode="Markdown",
     )
 
+# ---------------- ADMIN ----------------
 
-# ---------------- ADMIN (OPZIONALE) ----------------
-
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        return
+async def admin(update, context):
     await update.message.reply_text(
-        f"extra_unlocked = {extra_unlocked}\n"
-        f"LAST_USER_MESSAGE = {LAST_USER_MESSAGE}",
+        f"extra_unlocked = {extra_unlocked}\nLAST_USER_MESSAGE = {LAST_USER_MESSAGE}",
         parse_mode="Markdown",
     )
-
 
 # ---------------- MAIN ----------------
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Comandi
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
-
-    # Tutti i messaggi di testo (no comandi) → handle_message
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Job automatici
     jq = app.job_queue
     jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
     jq.run_daily(send_midday,      time=MIDDAY_TIME)
     jq.run_daily(send_good_night,  time=GOOD_NIGHT_TIME)
 
-    # Controllo inattività ogni 30 minuti
+    # inattività ogni 30 min
     jq.run_repeating(check_inactivity, interval=1800, first=1800)
 
-    # Avvia il bot
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
