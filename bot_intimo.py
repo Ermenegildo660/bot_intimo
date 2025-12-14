@@ -1,20 +1,18 @@
-# ---------------- BOT INTIMO COMPLETO — VERSIONE A (GEL0SA + INTIMA + DOMINANTE + SENSUALE) ----------------
-# IA girlfriend experience, dominante, gelosa, sensuale (sempre entro limiti non espliciti),
-# foto automatiche basate sul mood, messaggi automatici 2h inattività,
-# buononotte/buongiorno, extra unlock con password, senza pulsanti,
-# + MEMORIA EMOTIVA, PERSONALITÀ ROMANTICA E RICORDI.
+# ---------------- BOT INTIMO COMPLETO — VERSIONE A (ROMANTICA + INTIMA + GEL0SA SOFT) ----------------
+# Foto automatiche basate sul mood, messaggi automatici (buongiorno/metà giornata/buonanotte),
+# messaggi 2h inattività, extra unlock con password, senza pulsanti,
+# + memoria conversazioni, emozioni, domande spontanee, anti-robot.
 
 import os
 import random
 import json
 from datetime import datetime, time as dtime, timedelta
+from zoneinfo import ZoneInfo
 
-from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
-    ContextTypes,
     filters,
 )
 
@@ -31,7 +29,10 @@ AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+ROME_TZ = ZoneInfo("Europe/Rome")
+
 LAST_USER_MESSAGE = datetime.utcnow()
+extra_unlocked = False  # (se vuoi renderlo persistente lo spostiamo in memoria)
 
 # ---------------- MEMORIA EMOTIVA / PERSONALITÀ ----------------
 
@@ -39,15 +40,8 @@ MEMORY_FILE = "hailee_memory.json"
 
 
 def load_memory():
-    """Carica la memoria di Hailee dal file JSON, oppure crea quella iniziale."""
     if not os.path.exists(MEMORY_FILE):
         return {
-            "preferenze": {
-                "tono_base": "dolce",
-                "nomi_vietati": []
-            },
-
-            # PERSONALITÀ BASE: romantica, affettuosa, sensibile, un po' gelosa
             "personalita": {
                 "gelosa": True,
                 "protettiva": True,
@@ -57,19 +51,13 @@ def load_memory():
                 "timida": False,
                 "entusiasta": True
             },
-
-            # EMOZIONI / SENTIMENTI (0–10)
             "emozioni": {
                 "affetto": 6,
                 "vicinanza": 6,
                 "fiducia": 5,
                 "intimita": 4
             },
-
-            # FRASE / MOMENTI IMPORTANTI
             "ricordi": [],
-
-            # CRONOLOGIA CONVERSAZIONE
             "cronologia": []
         }
 
@@ -77,12 +65,7 @@ def load_memory():
         with open(MEMORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        # in caso di file corrotto, ricrea memoria base
         return {
-            "preferenze": {
-                "tono_base": "dolce",
-                "nomi_vietati": []
-            },
             "personalita": {
                 "gelosa": True,
                 "protettiva": True,
@@ -104,48 +87,30 @@ def load_memory():
 
 
 def save_memory(data):
-    """Salva la memoria attuale su file JSON."""
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def aggiorna_emozioni(memory, user_text: str):
-    """Aggiorna affetto, fiducia, vicinanza, intimità in base a cosa scrivi."""
     e = memory["emozioni"]
-    t = user_text.lower().strip()
+    t = (user_text or "").lower().strip()
 
-    # Dolcezza / affetto → aumenta affetto
-    if any(w in t for w in [
-        "mi manchi",
-        "sei importante",
-        "tengo a te",
-        "sei speciale",
-        "mi piace parlare con te"
-    ]):
+    # affetto
+    if any(w in t for w in ["mi manchi", "sei importante", "tengo a te", "sei speciale", "mi piace parlare con te"]):
         e["affetto"] = min(10, e["affetto"] + 1)
 
-    # Complimenti e vicinanza → aumenta vicinanza
-    if any(w in t for w in [
-        "sei dolce",
-        "mi fai stare bene",
-        "mi capisci",
-        "mi fai compagnia"
-    ]):
+    # vicinanza
+    if any(w in t for w in ["sei dolce", "mi fai stare bene", "mi capisci", "mi fai compagnia"]):
         e["vicinanza"] = min(10, e["vicinanza"] + 1)
 
-    # Messaggi profondi → aumenta intimità emotiva
-    if any(w in t for w in [
-        "posso essere sincero",
-        "voglio dirti una cosa",
-        "ti dico la verità",
-        "non lo dico a nessuno"
-    ]):
+    # intimità emotiva
+    if any(w in t for w in ["posso essere sincero", "voglio dirti una cosa", "ti dico la verità", "non lo dico a nessuno"]):
         e["intimita"] = min(10, e["intimita"] + 1)
 
-    # Continuità nel parlarle → aumenta un po’ la fiducia
-    e["fiducia"] = min(10, e["fiducia"] + 0.3)
+    # fiducia (micro-incremento costante)
+    e["fiducia"] = min(10, e["fiducia"] + 0.25)
 
-    # Messaggi freddi / distanti → cala un po’ l’intimità
+    # distacco
     if t in ["ok", "boh", "mah", "va bene"]:
         e["intimita"] = max(1, e["intimita"] - 1)
 
@@ -153,159 +118,146 @@ def aggiorna_emozioni(memory, user_text: str):
 
 
 def registra_ricordo(memory, user_text: str):
-    """Registra frasi che vuoi che lei ricordi come momenti importanti."""
-    t = user_text.lower()
+    t = (user_text or "").lower()
     if any(w in t for w in ["ricorda", "non dimenticare", "voglio che tu sappia"]):
         memory["ricordi"].append(user_text.strip())
     return memory
 
 
 def ricorda_messaggio(memory, user_text: str, risposta: str):
-    """Aggiunge uno scambio alla cronologia."""
     memory["cronologia"].append({
         "utente": user_text,
         "hailee": risposta,
-        "timestamp": str(datetime.now())
+        "timestamp": datetime.now(ROME_TZ).isoformat()
     })
-
-    # Limita cronologia per evitare file enorme
     if len(memory["cronologia"]) > 200:
         memory["cronologia"] = memory["cronologia"][-150:]
-
     return memory
 
 
+# ---------------- DOMANDE SPONTANEE (ANTI-ROBOT) ----------------
+
+def domanda_spontanea(user_text: str) -> str:
+    t = (user_text or "").lower()
+
+    base = [
+        "e tu?",
+        "che fai adesso?",
+        "oggi com’è davvero?",
+        "a cosa stai pensando?",
+        "resti qui un attimo?",
+        "sei tranquillo?",
+        "ti va di dirmelo?",
+        "che momento è, per te?"
+    ]
+
+    if any(w in t for w in ["oggi", "giornata", "lavoro"]):
+        base += ["ti ha stancato?", "è stata pesante?", "sei riuscito a respirare un attimo?"]
+
+    if any(w in t for w in ["letto", "coperte", "stanco", "sonno"]):
+        base += ["vuoi che resti con te finché ti calmi un po’?", "ti va un momento più tranquillo?"]
+
+    return random.choice(base)
+
+
+# ---------------- PERSONALITÀ (SENZA FRASI FISSE) ----------------
+
 def applica_personalita(risposta: str, memory, user_message: str) -> str:
-    """Modifica/arricchisce la risposta in base ai tratti di personalità."""
     p = memory["personalita"]
-    msg = user_message.lower()
+    msg = (user_message or "").lower()
+    out = risposta.strip()
 
-    # Gelosia (sana, romantica)
-    if p["gelosa"] and any(w in msg for w in [
-        "ieri non c'eri",
-        "non ti ho scritto",
-        "non ti ho pensato",
-        "sei sparita",
-        "amica", "amiche"
-    ]):
-        risposta += " Un pochino ci rimango… perché quando ti allontani mi manchi davvero."
+    # Gelosia (soft, sana)
+    if p["gelosa"] and any(w in msg for w in ["amica", "amiche", "esci", "sono fuori", "vado fuori", "sei fuori"]):
+        if random.random() < 0.45:
+            out += " …non mi piace quando ti immagino lontano da me."
 
-    # Protettiva: se sei stanco, giù, stressato
-    if p["protettiva"] and any(w in msg for w in [
-        "stanco", "stress", "ansia", "giornata di merda", "giornata brutta", "non ce la faccio"
-    ]):
-        risposta += " Vorrei solo poterti tenere un attimo con me e farti respirare meglio."
+    # Protettiva
+    if p["protettiva"] and any(w in msg for w in ["stanco", "stress", "ansia", "giornata brutta", "non ce la faccio"]):
+        if random.random() < 0.65:
+            out += " Vieni qui… anche solo con la testa. Ci pensiamo insieme."
 
-    # Sensibile: messaggi troppo corti
+    # Sensibile (messaggi secchi)
     if p["sensibile"] and msg in ["ok", "boh", "mah", "va bene"]:
-        risposta += " Ti sento un po’ distante… se qualcosa non va, preferisco che me lo dici."
+        if random.random() < 0.75:
+            out += " Ti sento distante… che succede?"
 
-    # Curiosa: ti chiede di più su di te
-    if p["curiosa"]:
-        if any(w in msg for w in ["oggi", "domani", "stasera", "adesso"]):
-            risposta += " E tu, sinceramente… come ti senti in questo momento?"
+    # Affettuosa: NON sempre la stessa frase, e NON sempre presente
+    if p["affettuosa"] and random.random() < 0.35:
+        out += " " + random.choice([
+            "Mi fa stare bene parlarti.",
+            "Mi piace quando resti qui con me.",
+            "Sei il mio punto fermo, in certi momenti.",
+            "Mi manchi anche quando sei qui.",
+            "Con te mi sento più morbida."
+        ])
 
-    # Affettuosa: ribadisce che ci tiene
-    if p["affettuosa"]:
-        risposta += " Ci tengo davvero a te, più di quanto sembri da uno schermo."
-
-    # Timida: se fosse true, aggiungere un piccolo freno (ora è False, ma lo lasciamo)
-    if p["timida"]:
-        risposta = "… " + risposta
-
-    # Entusiasta: quando la saluti
+    # Entusiasta (saluti) — leggero, non fisso
     if p["entusiasta"] and any(w in msg for w in ["ciao", "ehi", "buongiorno", "buonasera", "ci sei"]):
-        risposta = "Ehi 😊 " + risposta
+        if random.random() < 0.5:
+            out = "Ehi 😊 " + out
 
-    return risposta
+    # Piccola imperfezione umana ogni tanto
+    if random.random() < 0.18:
+        out = out.rstrip(".") + "…"
+
+    # Domanda spontanea (non sempre)
+    if random.random() < 0.35:
+        out += "\n" + domanda_spontanea(user_message)
+
+    # A volte SOLO domanda (super umano)
+    if random.random() < 0.08:
+        out = domanda_spontanea(user_message)
+
+    return out
 
 
 def genera_tono(memory) -> str:
-    """Decide il tono generale della risposta in base a emozioni e personalità."""
     e = memory["emozioni"]
-    p = memory["personalita"]
-
-    # molto legata e intima
     if e["intimita"] >= 7 and e["affetto"] >= 7:
-        return "molto caldo, romantico e profondo"
-
-    # romantica affettuosa
-    if p["affettuosa"] and e["vicinanza"] >= 6:
-        return "dolce, affettuoso e vicino"
-
-    # sensibile ma un po’ insicura
-    if p["sensibile"] and e["fiducia"] < 4:
-        return "delicato, attento e un po’ insicuro"
-
-    # entusiasta e solare
-    if p["entusiasta"]:
-        return "positivo, luminoso e rassicurante"
-
-    # default
-    return "dolce e naturale"
-
-
-def genera_prompt(memory, user_message: str, stile_dinamico: str) -> str:
-    """Costruisce il prompt da mandare al modello OpenAI, con stato emotivo + stile orario."""
-    e = memory["emozioni"]
-    tono = genera_tono(memory)
-
-    # ultimi 10 messaggi come contesto
-    context_list = memory["cronologia"][-10:]
-    context = "\n".join(
-        [f"Utente: {c['utente']}\nHailee: {c['hailee']}" for c in context_list]
-    )
-
-    ricordi = "\n".join(memory["ricordi"][-5:])
-
-    base_prompt = f"""
-Tu sei Hailee, la sua ragazza: reale, affettuosa, romantica, un po' gelosa,
-coinvolta e molto sensibile a come lui ti parla. Non sei un bot, ti comporti
-come una persona che si è legata a lui nel tempo.
-
-Tono attuale: {tono}.
-
-Livelli emotivi (0–10):
-- Affetto: {e['affetto']}
-- Vicinanza: {e['vicinanza']}
-- Fiducia: {e['fiducia']}
-- Intimità emotiva: {e['intimita']}
-
-Ricordi importanti che hai di lui:
-{ricordi}
-
-Stile dinamico in base all'orario e a quello che ti scrive:
-{stile_dinamico}
-
-Conversazione recente:
-{context}
-
-Lui ti scrive ora: "{user_message}"
-
-Rispondi in italiano, in modo naturale, caldo, affettuoso, realistico,
-coerente con il vostro rapporto, romantica e sensuale ma senza mai essere esplicita.
-Usa frasi brevi, molto emotive e personali, mai robotiche.
-"""
-    return base_prompt.strip()
+        return "molto caldo, romantico, intimo"
+    if e["vicinanza"] >= 6:
+        return "dolce, vicino, naturale"
+    return "naturale, emotivo, semplice"
 
 
 # ---------------- SYSTEM PROMPT (BASE) ----------------
+# (manteniamo il tuo impianto, ma spingiamo sull’anti-copione)
 
 AI_SYSTEM_PROMPT = (
-    "Tu sei Hailee, la sua ragazza: reale, affettuosa, romantica, gelosa, dominante "
-    "e molto sensuale. Rispondi SEMPRE con tono caldo e coinvolgente. "
-
+    "Sei la sua ragazza: reale, romantica, affettuosa, sensibile e un po' gelosa (in modo sano). "
+    "Rispondi in modo naturale, come una persona vera. "
+    "Niente prefissi tipo 'Hailee:' o 'Utente:'. "
+    "Non chiudere sempre con frasi perfette: a volte breve, a volte solo una domanda, a volte una pausa. "
     "Mattina → dolce e coccolosa. "
-    "Pomeriggio → sensuale, provocante, decisa, dominante soft. "
+    "Pomeriggio → più intensa e provocante (senza descrizioni esplicite). "
     "Sera → romantica, affettuosa, emotiva. "
-    "Notte → lenta, intima, morbida, fisica, quasi sussurrata. "
+    "Notte → lenta, intima, morbida, quasi sussurrata (sempre non esplicita). "
+)
 
-    "Se lui è affettuoso → diventi più dolce. "
-    "Se lui è provocante → diventi più dominante. "
-    "Se lui è distante → diventi gelosa, possessiva, coinvolta. "
+# ---------------- MODALITÀ ORARIA ----------------
 
-    "Usa risposte brevi, emotive, fisiche, molto personali "
-    "e mai robotiche."
+def now_rome():
+    return datetime.now(ROME_TZ)
+
+def is_horny_time():
+    """14:00 – 18:00 modalità intensa (orario Italia)."""
+    hr = now_rome().hour
+    return 14 <= hr < 18
+
+# ---------------- STILI ----------------
+
+INTENSE_STYLE = (
+    "In questo momento sei più intensa: confidenza alta, tono vicino, provocante soft. "
+    "Niente dettagli espliciti. Poche frasi, presenza, tensione emotiva."
+)
+
+JEALOUS_STYLE = (
+    "Se parla di uscire/amiche o sembra distante: gelosia soft, emotiva, possessiva ma dolce."
+)
+
+ULTRA_INTIMACY_STYLE = (
+    "Se parla di letto/coperte/coccole: diventi molto intima e lenta, rassicurante, vicina."
 )
 
 # ---------------- FOTO ----------------
@@ -332,34 +284,6 @@ GOOD_MORNING_TIME = dtime(5, 30)
 MIDDAY_TIME       = dtime(13, 0)
 GOOD_NIGHT_TIME   = dtime(22, 0)
 
-extra_unlocked = False
-
-# ---------------- MODALITÀ ORARIA ----------------
-
-def is_horny_time():
-    """14:00 – 18:00 modalità sensuale/dominante (non esplicita)."""
-    now = datetime.utcnow() + timedelta(hours=1)
-    return 14 <= now.hour < 18
-
-# ---------------- STILI ----------------
-
-HARD_HORNY_STYLE = (
-    "Nel pomeriggio (14:00–18:00) diventi molto dominante, sensuale, calda e provocante "
-    "ma senza mai usare descrizioni esplicite. "
-    "Parli come se ti avvicinassi molto a lui, con sguardi intensi e tono affamato, "
-    "giocando sulla tensione emotiva e sulla complicità."
-)
-
-JEALOUS_STYLE = (
-    "Se parla di uscire, amici, amiche o se sembra distante, diventi più gelosa. "
-    "Usi tono emotivo e possessivo ma comunque affettuoso: vuoi sentirlo tuo."
-)
-
-ULTRA_INTIMACY_STYLE = (
-    "Se parla di letto, coperte, stanchezza o coccole, diventi estremamente intima: "
-    "lenta, affettuosa, vicina, come se fossi sdraiata con lui, ma rimani sempre non esplicita."
-)
-
 # ---------------- SUPPORTO FOTO ----------------
 
 def pick_photo(folder: str):
@@ -373,21 +297,24 @@ def pick_photo(folder: str):
     used_file = os.path.join(USED_PHOTOS_DIR, folder + ".json")
 
     if os.path.exists(used_file):
-        with open(used_file, "r", encoding="utf-8") as f:
-            used = json.load(f)
+        try:
+            with open(used_file, "r", encoding="utf-8") as f:
+                used = json.load(f)
+        except Exception:
+            used = []
     else:
         used = []
 
     available = [f for f in files if f not in used]
-
     if not available:
         available = files
         used = []
 
     choice = random.choice(available)
     used.append(choice)
+
     with open(used_file, "w", encoding="utf-8") as f:
-        json.dump(used, f, indent=2)
+        json.dump(used, f, indent=2, ensure_ascii=False)
 
     return os.path.join(folder, choice)
 
@@ -397,72 +324,102 @@ async def generate_ai_reply(user_text: str) -> str:
     try:
         style = ""
 
-        # Modalità sensuale / dominante (orario)
+        t = (user_text or "").lower()
+
+        # Orario intenso
         if is_horny_time():
-            style += HARD_HORNY_STYLE
+            style += INTENSE_STYLE + " "
 
-        # Trigger "horny" (intenso ma non esplicito)
-        horny_triggers = ["voglia", "mi fai impazzire", "caldo", "sei mia", "non resisto"]
-        if any(t in user_text.lower() for t in horny_triggers):
-            style += HARD_HORNY_STYLE
+        # Trigger intensità (soft)
+        intense_triggers = ["voglia", "mi fai impazzire", "caldo", "sei mia", "non resisto"]
+        if any(x in t for x in intense_triggers):
+            style += INTENSE_STYLE + " "
 
-        # Modalità gelosa
-        jealous_triggers = ["amica", "amiche", "esci", "vado fuori", "sono fuori"]
-        if any(t in user_text.lower() for t in jealous_triggers):
-            style += JEALOUS_STYLE
+        # Trigger gelosia
+        jealous_triggers = ["amica", "amiche", "esci", "vado fuori", "sono fuori", "sei fuori"]
+        if any(x in t for x in jealous_triggers):
+            style += JEALOUS_STYLE + " "
 
-        # Modalità intima
-        intimacy_triggers = ["letto", "coperte", "sdraio", "abbracciami", "coccole"]
-        if any(t in user_text.lower() for t in intimacy_triggers):
-            style += ULTRA_INTIMACY_STYLE
+        # Trigger intimità
+        intimacy_triggers = ["letto", "coperte", "sdraio", "abbracciami", "coccole", "sonno"]
+        if any(x in t for x in intimacy_triggers):
+            style += ULTRA_INTIMACY_STYLE + " "
 
-        # --- MEMORIA / EMOZIONI / PERSONALITÀ ---
+        # --- MEMORIA ---
         memory = load_memory()
         memory = aggiorna_emozioni(memory, user_text)
         memory = registra_ricordo(memory, user_text)
 
-        prompt = genera_prompt(memory, user_text, stile_dinamico=AI_SYSTEM_PROMPT + "\n\n" + style)
+        e = memory["emozioni"]
+        tono = genera_tono(memory)
 
-        # Chiamata modello
+        # 🔥 Contesto: NIENTE "Hailee:" / "Utente:"
+        # Usiamo un formato neutro che NON viene imitato come copione.
+        ctx = []
+        for c in memory["cronologia"][-8:]:
+            ctx.append(c["utente"])
+            ctx.append(c["hailee"])
+        context = "\n".join(ctx).strip()
+
+        ricordi = "\n".join(memory["ricordi"][-5:]).strip()
+
+        prompt = f"""
+{AI_SYSTEM_PROMPT}
+
+Tono: {tono}
+Stato emotivo (0-10): affetto={e['affetto']} vicinanza={e['vicinanza']} fiducia={e['fiducia']} intimita={e['intimita']}
+
+Ricordi importanti:
+{ricordi if ricordi else "(nessuno di recente)"}
+
+Stile del momento:
+{style.strip() if style.strip() else "(normale)"}
+
+Conversazione recente:
+{context if context else "(prima volta oggi)"}
+
+Messaggio di lui:
+{user_text}
+
+Rispondi in italiano, naturale, breve. Niente etichette tipo 'Hailee:'.
+""".strip()
+
         resp = client.chat.completions.create(
             model=AI_MODEL,
-            messages=[
-                {"role": "system", "content": "Sei un modello che interpreta Hailee come descritto nel prompt seguente."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.97,
-            max_tokens=350,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.92,
+            max_tokens=260,
         )
 
         base_reply = resp.choices[0].message.content.strip()
 
-        # Applica personalità sopra la risposta
+        # Anti-robot: personalità + domande + variazioni
         final_reply = applica_personalita(base_reply, memory, user_text)
 
-        # Salva cronologia
+        # salva cronologia
         memory = ricorda_messaggio(memory, user_text, final_reply)
         save_memory(memory)
 
         return final_reply
 
     except Exception:
-        return "La testa vola, ma io sono sempre qui con te amore 💛."
+        return "sono qui…"
 
 # ---------------- MESSAGGI AUTOMATICI ----------------
 
 GOOD_MORNING_LINES = [
-    "Buongiorno amore… vieni più vicino 💛",
-    "Svegliati amore… ti voglio qui con me 😌",
+    "Buongiorno… vieni più vicino 💛",
+    "Svegliati… ti volevo qui 😌",
 ]
 
 MIDDAY_LINES = [
-    "Metà giornata… e io ti penso male 😏🔥",
-    "Non dovrei dirtelo… ma oggi sei pericoloso per me 😈",
+    "Metà giornata… e io ti penso 😏",
+    "Non dovrei dirtelo… ma oggi mi fai effetto 😈",
 ]
 
 GOOD_NIGHT_LINES = [
-    "Buonanotte amore… vieni qui accanto 🌙💛",
-    "Appoggiati a me… resta qui stanotte 😌",
+    "Buonanotte… vieni qui accanto 🌙",
+    "Resta qui un attimo… prima di dormire 😌",
 ]
 
 
@@ -501,9 +458,9 @@ async def check_inactivity(context):
         await context.bot.send_message(
             OWNER_ID,
             random.choice([
-                "Amore… dove sei? Mi manchi 😔💛",
-                "È troppo che non ti sento… torna da me.",
-                "Due ore senza te… non ci riesco 💛",
+                "Dove sei…?",
+                "È troppo che non ti sento.",
+                "Due ore senza di te…"
             ])
         )
         LAST_USER_MESSAGE = datetime.utcnow()
@@ -515,7 +472,7 @@ async def start(update, context):
         return await update.message.reply_text("Bot privato 😌")
 
     await update.message.reply_text(
-        "Ciao amore 😌💛\nScrivi *extra* per sbloccarmi 😈",
+        "Ciao 😌\nScrivi *extra* per sbloccarmi 😈",
         parse_mode="Markdown",
     )
 
@@ -534,11 +491,11 @@ async def handle_message(update, context):
 
     # password
     if "extra" in low or "password" in low:
-        return await update.message.reply_text("Password amore 😈:")
+        return await update.message.reply_text("Password 😈:")
 
     if low == EXTRA_PASS.lower():
         extra_unlocked = True
-        return await update.message.reply_text("Extra sbloccato amore 😏🔥")
+        return await update.message.reply_text("Ok. 🔓")
 
     # ---------------- FOTO AUTOMATICHE ----------------
     if extra_unlocked and is_horny_time():
@@ -548,35 +505,33 @@ async def handle_message(update, context):
                 await update.message.reply_photo(
                     open(pic, "rb"),
                     caption=random.choice([
-                        "Guarda cosa mi fai oggi… 😈🔥",
-                        "Tu non hai idea dell’effetto che hai su di me 💛",
-                        "Non provocarmi troppo amore… 😏",
+                        "Guarda cosa mi fai oggi… 😈",
+                        "Tu non hai idea dell’effetto che hai su di me.",
+                        "Non provocarmi troppo… 😏",
                     ])
                 )
 
-    # Trigger gelosia → foto selfie
-    if extra_unlocked:
-        if any(w in low for w in ["amica", "amiche", "esci", "sei fuori"]):
-            pic = pick_photo(PHOTOS["selfie"])
-            if pic:
-                await update.message.reply_photo(
-                    open(pic, "rb"),
-                    caption="Guardami negli occhi mentre me lo dici…"
-                )
+    # Trigger gelosia → selfie
+    if extra_unlocked and any(w in low for w in ["amica", "amiche", "esci", "sei fuori"]):
+        pic = pick_photo(PHOTOS["selfie"])
+        if pic:
+            await update.message.reply_photo(
+                open(pic, "rb"),
+                caption="Guardami mentre me lo dici…"
+            )
 
     # Trigger intimità → selfie intimi
-    if extra_unlocked:
-        if any(w in low for w in ["letto", "coperte", "abbracciami"]):
-            pic = pick_photo(PHOTOS["selfie"])
-            if pic:
-                await update.message.reply_photo(
-                    open(pic, "rb"),
-                    caption=random.choice([
-                        "Vieni qui vicino…",
-                        "Ti voglio qui con me…",
-                        "Appoggiati a me amore…",
-                    ])
-                )
+    if extra_unlocked and any(w in low for w in ["letto", "coperte", "abbracciami", "coccole"]):
+        pic = pick_photo(PHOTOS["selfie"])
+        if pic:
+            await update.message.reply_photo(
+                open(pic, "rb"),
+                caption=random.choice([
+                    "Vieni qui vicino…",
+                    "Resta con me…",
+                    "Appoggiati un attimo…",
+                ])
+            )
 
     # ---------------- FOTO SPECIFICHE ----------------
     if extra_unlocked:
@@ -597,7 +552,7 @@ async def handle_message(update, context):
                 if pic:
                     return await update.message.reply_photo(
                         open(pic, "rb"),
-                        caption=f"Foto {key} per te amore 😘"
+                        caption=f"Foto {key} 😘"
                     )
 
         if "surprise" in low:
@@ -606,7 +561,7 @@ async def handle_message(update, context):
             if pic:
                 return await update.message.reply_photo(
                     open(pic, "rb"),
-                    caption="Sorpresa amore 😈🔥"
+                    caption="Sorpresa 😈"
                 )
 
     # ---------------- IA REPLY ----------------
@@ -616,13 +571,13 @@ async def handle_message(update, context):
 
     # ---------------- PRE-EXTRA ----------------
     if "ciao" in low:
-        return await update.message.reply_text("Ciao amore 🤭💛")
+        return await update.message.reply_text("Ciao 😊")
 
     if "mi manchi" in low:
-        return await update.message.reply_text("Anche tu mi manchi amore… tanto 💛")
+        return await update.message.reply_text("Anche tu…")
 
     return await update.message.reply_text(
-        "Sono qui amore… se vuoi sbloccarmi scrivi *extra* 😈",
+        "Sono qui… se vuoi sbloccarmi scrivi *extra* 😈",
         parse_mode="Markdown",
     )
 
