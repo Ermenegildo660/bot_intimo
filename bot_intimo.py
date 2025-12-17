@@ -1,12 +1,14 @@
-# ---------------- BOT PERSONALE — VERSIONE STABILE ----------------
-# IA invariata, UNA cartella foto,
-# foto su richiesta + casuali + inattività,
-# comportamento umano, niente loop.
+# ---------------- BOT PERSONALE — VERSIONE FINALE ----------------
+# IA naturale (non stravolta)
+# UNA sola cartella foto
+# Foto su richiesta + casuali + inattività
+# Buongiorno e buonanotte SEMPRE automatici
+# Extra unlock, niente loop robotici
 
 import os
 import random
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -75,7 +77,14 @@ MIN_SILENCE_FOR_PHOTO = 90 * 60      # 90 minuti
 PHOTO_COOLDOWN = 3 * 60 * 60         # 3 ore
 
 # ======================================================
-# MEMORIA MINIMA (IA INVARIATA)
+# ORARI FISSI
+# ======================================================
+
+GOOD_MORNING_TIME = dtime(6, 30)
+GOOD_NIGHT_TIME   = dtime(22, 30)
+
+# ======================================================
+# MEMORIA MINIMA
 # ======================================================
 
 MEMORY_FILE = "hailee_memory.json"
@@ -92,7 +101,7 @@ def save_memory(m):
     json.dump(m, open(MEMORY_FILE, "w"), indent=2, ensure_ascii=False)
 
 # ======================================================
-# IA (NON STRAVOLTA)
+# IA (NATURALE)
 # ======================================================
 
 AI_SYSTEM_PROMPT = (
@@ -179,14 +188,49 @@ async def send_photo_if_allowed(context):
     LAST_PHOTO_SENT = now
 
 # ======================================================
-# INATTIVITÀ
+# BUONGIORNO / BUONANOTTE (SEMPRE)
+# ======================================================
+
+async def send_good_morning(context):
+    pic = pick_photo()
+    if not pic:
+        return
+
+    await context.bot.send_photo(
+        OWNER_ID,
+        open(pic, "rb"),
+        caption=random.choice([
+            "buongiorno…",
+            "ehi",
+            "ti penso stamattina",
+            "iniziamo così"
+        ])
+    )
+
+async def send_good_night(context):
+    pic = pick_photo()
+    if not pic:
+        return
+
+    await context.bot.send_photo(
+        OWNER_ID,
+        open(pic, "rb"),
+        caption=random.choice([
+            "buonanotte…",
+            "prima di dormire",
+            "così",
+            "resta un attimo"
+        ])
+    )
+
+# ======================================================
+# INATTIVITÀ TESTO
 # ======================================================
 
 async def check_inactivity(context):
     global LAST_USER_MESSAGE
 
-    now = datetime.utcnow()
-    diff = (now - LAST_USER_MESSAGE).total_seconds()
+    diff = (datetime.utcnow() - LAST_USER_MESSAGE).total_seconds()
 
     if diff >= MIN_SILENCE_FOR_PHOTO:
         await send_photo_if_allowed(context)
@@ -221,7 +265,7 @@ async def handle_message(update, context):
     text = update.message.text or ""
     low = text.lower()
 
-    # ---- EXTRA ----
+    # EXTRA
     if "extra" in low:
         return await update.message.reply_text("password")
 
@@ -229,7 +273,7 @@ async def handle_message(update, context):
         extra_unlocked = True
         return await update.message.reply_text("ok")
 
-    # ---- PRE EXTRA (no loop) ----
+    # PRE EXTRA
     if not extra_unlocked:
         if not PRE_EXTRA_SHOWN:
             PRE_EXTRA_SHOWN = True
@@ -243,16 +287,11 @@ async def handle_message(update, context):
             )
         return
 
-    # ---- FOTO SU RICHIESTA ----
-    foto_triggers = [
-        "foto",
-        "foto hailee",
-        "mandami una foto",
-        "voglio una foto",
-        "fammi vedere"
-    ]
-
-    if any(t in low for t in foto_triggers):
+    # FOTO SU RICHIESTA
+    if any(t in low for t in [
+        "foto", "foto hailee", "mandami una foto",
+        "voglio una foto", "fammi vedere"
+    ]):
         pic = pick_photo()
         if pic:
             await update.message.reply_photo(
@@ -261,7 +300,7 @@ async def handle_message(update, context):
             )
         return
 
-    # ---- IA ----
+    # IA
     reply = await generate_ai_reply(text)
     await update.message.reply_text(reply)
 
@@ -279,6 +318,9 @@ def main():
 
     jq.run_repeating(send_photo_if_allowed, interval=2700, first=1800)
     jq.run_repeating(check_inactivity, interval=1800, first=1800)
+
+    jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
+    jq.run_daily(send_good_night,   time=GOOD_NIGHT_TIME)
 
     app.run_polling()
 
