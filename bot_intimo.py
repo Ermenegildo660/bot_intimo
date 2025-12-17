@@ -1,13 +1,12 @@
-# ---------------- BOT INTIMO COMPLETO — VERSIONE STABILE ----------------
-# IA personale (invariata), UNA sola cartella foto,
-# invio foto casuale + per inattività (realistico),
-# extra unlock, messaggi automatici, niente categorie.
+# ---------------- BOT PERSONALE — VERSIONE STABILE ----------------
+# IA invariata, UNA cartella foto,
+# foto su richiesta + casuali + inattività,
+# comportamento umano, niente loop.
 
 import os
 import random
 import json
-from datetime import datetime, time as dtime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -31,11 +30,11 @@ AI_MODEL = os.environ.get("AI_MODEL", "gpt-4o")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-ROME_TZ = ZoneInfo("Europe/Rome")
-
 LAST_USER_MESSAGE = datetime.utcnow()
 LAST_PHOTO_SENT = None
+
 extra_unlocked = False
+PRE_EXTRA_SHOWN = False
 
 # ======================================================
 # FOTO (UNA SOLA CARTELLA)
@@ -52,12 +51,9 @@ def pick_photo():
     if not files:
         return None
 
-    if os.path.exists(USED_PHOTOS_FILE):
-        try:
-            used = json.load(open(USED_PHOTOS_FILE))
-        except Exception:
-            used = []
-    else:
+    try:
+        used = json.load(open(USED_PHOTOS_FILE))
+    except Exception:
         used = []
 
     available = [f for f in files if f not in used]
@@ -67,19 +63,19 @@ def pick_photo():
 
     choice = random.choice(available)
     used.append(choice)
-    json.dump(used, open(USED_PHOTOS_FILE, "w"), indent=2)
 
+    json.dump(used, open(USED_PHOTOS_FILE, "w"), indent=2)
     return os.path.join(PHOTOS_DIR, choice)
 
 # ======================================================
-# TEMPI FOTO (UMANI)
+# TEMPI FOTO
 # ======================================================
 
-MIN_SILENCE_FOR_PHOTO = 90 * 60      # 90 min senza scrivere
-PHOTO_COOLDOWN = 3 * 60 * 60         # minimo 3 ore tra due foto
+MIN_SILENCE_FOR_PHOTO = 90 * 60      # 90 minuti
+PHOTO_COOLDOWN = 3 * 60 * 60         # 3 ore
 
 # ======================================================
-# MEMORIA (MINIMA – IA INVARIATA)
+# MEMORIA MINIMA (IA INVARIATA)
 # ======================================================
 
 MEMORY_FILE = "hailee_memory.json"
@@ -100,20 +96,18 @@ def save_memory(m):
 # ======================================================
 
 AI_SYSTEM_PROMPT = (
-    "Sei una persona reale, romantica, affettuosa, sensibile e un po' gelosa. "
-    "Parli in modo naturale, non robotico. "
-    "Usi frasi brevi. A volte fai domande spontanee. "
-    "Non usare etichette o nomi. "
+    "Sei una persona reale, romantica, affettuosa e naturale. "
+    "Parli come una persona vera, non come un bot. "
+    "Usi frasi semplici. A volte fai domande spontanee. "
+    "Non usare etichette o nomi."
 )
 
 async def generate_ai_reply(user_text: str) -> str:
     memory = load_memory()
 
-    ctx = []
-    for c in memory["cronologia"][-6:]:
-        ctx.append(c["u"])
-        ctx.append(c["a"])
-    context = "\n".join(ctx)
+    context = "\n".join(
+        [f"{c['u']}\n{c['a']}" for c in memory["cronologia"][-6:]]
+    )
 
     prompt = f"""
 {AI_SYSTEM_PROMPT}
@@ -124,7 +118,7 @@ Conversazione recente:
 Messaggio:
 {user_text}
 
-Rispondi in modo naturale, umano.
+Rispondi in modo naturale.
 """
 
     resp = client.chat.completions.create(
@@ -136,13 +130,12 @@ Rispondi in modo naturale, umano.
 
     reply = resp.choices[0].message.content.strip()
 
-    # Domanda spontanea (non sempre)
     if random.random() < 0.35:
         reply += "\n" + random.choice([
             "e tu?",
             "che fai adesso?",
             "a cosa stai pensando?",
-            "resti qui un attimo?"
+            "resti qui?"
         ])
 
     memory["cronologia"].append({"u": user_text, "a": reply})
@@ -152,7 +145,7 @@ Rispondi in modo naturale, umano.
     return reply
 
 # ======================================================
-# FOTO SMART (CASUALI + INATTIVITÀ)
+# FOTO AUTOMATICHE (CASUALI + INATTIVITÀ)
 # ======================================================
 
 async def send_photo_if_allowed(context):
@@ -163,7 +156,6 @@ async def send_photo_if_allowed(context):
 
     now = datetime.utcnow()
 
-    # cooldown
     if LAST_PHOTO_SENT and (now - LAST_PHOTO_SENT).total_seconds() < PHOTO_COOLDOWN:
         return
 
@@ -171,7 +163,6 @@ async def send_photo_if_allowed(context):
     if silence < MIN_SILENCE_FOR_PHOTO:
         return
 
-    # non sempre
     if random.random() < 0.5:
         return
 
@@ -197,11 +188,9 @@ async def check_inactivity(context):
     now = datetime.utcnow()
     diff = (now - LAST_USER_MESSAGE).total_seconds()
 
-    # prova foto prima
     if diff >= MIN_SILENCE_FOR_PHOTO:
         await send_photo_if_allowed(context)
 
-    # messaggio dopo 2h
     if diff >= 7200:
         await context.bot.send_message(
             OWNER_ID,
@@ -223,25 +212,57 @@ async def start(update, context):
     await update.message.reply_text("sono qui")
 
 async def handle_message(update, context):
-    global LAST_USER_MESSAGE, extra_unlocked
+    global LAST_USER_MESSAGE, extra_unlocked, PRE_EXTRA_SHOWN
 
     if update.effective_user.id != OWNER_ID:
         return
 
     LAST_USER_MESSAGE = datetime.utcnow()
-    text = update.message.text.lower()
+    text = update.message.text or ""
+    low = text.lower()
 
-    if "extra" in text:
+    # ---- EXTRA ----
+    if "extra" in low:
         return await update.message.reply_text("password")
 
-    if text == EXTRA_PASS.lower():
+    if low == EXTRA_PASS.lower():
         extra_unlocked = True
         return await update.message.reply_text("ok")
 
+    # ---- PRE EXTRA (no loop) ----
     if not extra_unlocked:
-        return await update.message.reply_text("scrivimi")
+        if not PRE_EXTRA_SHOWN:
+            PRE_EXTRA_SHOWN = True
+            return await update.message.reply_text(
+                random.choice([
+                    "ehi… sono qui",
+                    "ti sento",
+                    "dimmi",
+                    "quando vuoi, sbloccami"
+                ])
+            )
+        return
 
-    reply = await generate_ai_reply(update.message.text)
+    # ---- FOTO SU RICHIESTA ----
+    foto_triggers = [
+        "foto",
+        "foto hailee",
+        "mandami una foto",
+        "voglio una foto",
+        "fammi vedere"
+    ]
+
+    if any(t in low for t in foto_triggers):
+        pic = pick_photo()
+        if pic:
+            await update.message.reply_photo(
+                open(pic, "rb"),
+                caption=random.choice(["…", "così", "sono io", "guarda"])
+            )
+        return
+
+    # ---- IA ----
+    reply = await generate_ai_reply(text)
     await update.message.reply_text(reply)
 
 # ======================================================
@@ -256,10 +277,7 @@ def main():
 
     jq = app.job_queue
 
-    # controllo foto casuali ogni 45 min
     jq.run_repeating(send_photo_if_allowed, interval=2700, first=1800)
-
-    # controllo inattività ogni 30 min
     jq.run_repeating(check_inactivity, interval=1800, first=1800)
 
     app.run_polling()
