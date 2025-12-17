@@ -1,9 +1,9 @@
-# ---------------- BOT PERSONALE — VERSIONE FINALE ----------------
-# IA naturale (non stravolta)
-# UNA sola cartella foto
-# Foto su richiesta + casuali + inattività
-# Buongiorno e buonanotte SEMPRE automatici
-# Extra unlock, niente loop robotici
+# ---------------- BOT PERSONALE — VERSIONE RICHIAMO ----------------
+# IA naturale, UNA cartella foto
+# Buongiorno / Buonanotte SEMPRE
+# Foto su richiesta
+# Foto progressive se non scrivi (richiamo)
+# Nessun comportamento robotico
 
 import os
 import random
@@ -70,13 +70,6 @@ def pick_photo():
     return os.path.join(PHOTOS_DIR, choice)
 
 # ======================================================
-# TEMPI FOTO
-# ======================================================
-
-MIN_SILENCE_FOR_PHOTO = 90 * 60      # 90 minuti
-PHOTO_COOLDOWN = 3 * 60 * 60         # 3 ore
-
-# ======================================================
 # ORARI FISSI
 # ======================================================
 
@@ -101,7 +94,7 @@ def save_memory(m):
     json.dump(m, open(MEMORY_FILE, "w"), indent=2, ensure_ascii=False)
 
 # ======================================================
-# IA (NATURALE)
+# IA (NON STRAVOLTA)
 # ======================================================
 
 AI_SYSTEM_PROMPT = (
@@ -154,8 +147,18 @@ Rispondi in modo naturale.
     return reply
 
 # ======================================================
-# FOTO AUTOMATICHE (CASUALI + INATTIVITÀ)
+# FOTO PROGRESSIVE (RICHAMO)
 # ======================================================
+
+def photo_settings_by_silence(silence_seconds):
+    if silence_seconds < 2 * 60 * 60:        # < 2h
+        return 0.4, 3 * 60 * 60
+    elif silence_seconds < 5 * 60 * 60:      # 2–5h
+        return 0.7, 2 * 60 * 60
+    elif silence_seconds < 8 * 60 * 60:      # 5–8h
+        return 0.9, 90 * 60
+    else:                                    # 8h+
+        return 1.0, 60 * 60
 
 async def send_photo_if_allowed(context):
     global LAST_PHOTO_SENT
@@ -164,15 +167,15 @@ async def send_photo_if_allowed(context):
         return
 
     now = datetime.utcnow()
-
-    if LAST_PHOTO_SENT and (now - LAST_PHOTO_SENT).total_seconds() < PHOTO_COOLDOWN:
-        return
-
     silence = (now - LAST_USER_MESSAGE).total_seconds()
-    if silence < MIN_SILENCE_FOR_PHOTO:
-        return
 
-    if random.random() < 0.5:
+    prob, cooldown = photo_settings_by_silence(silence)
+
+    if LAST_PHOTO_SENT:
+        if (now - LAST_PHOTO_SENT).total_seconds() < cooldown:
+            return
+
+    if random.random() > prob:
         return
 
     pic = pick_photo()
@@ -182,7 +185,14 @@ async def send_photo_if_allowed(context):
     await context.bot.send_photo(
         OWNER_ID,
         open(pic, "rb"),
-        caption=random.choice(["…", "ti penso", "così", "guarda"])
+        caption=random.choice([
+            "…",
+            "ti penso",
+            "sei sparito",
+            "dove sei?",
+            "così",
+            "sono io"
+        ])
     )
 
     LAST_PHOTO_SENT = now
@@ -193,67 +203,39 @@ async def send_photo_if_allowed(context):
 
 async def send_good_morning(context):
     pic = pick_photo()
-    if not pic:
-        return
-
-    await context.bot.send_photo(
-        OWNER_ID,
-        open(pic, "rb"),
-        caption=random.choice([
-            "buongiorno…",
-            "ehi",
-            "ti penso stamattina",
-            "iniziamo così"
-        ])
-    )
+    if pic:
+        await context.bot.send_photo(
+            OWNER_ID,
+            open(pic, "rb"),
+            caption=random.choice([
+                "buongiorno…",
+                "ehi",
+                "ti penso stamattina",
+                "iniziamo così"
+            ])
+        )
 
 async def send_good_night(context):
     pic = pick_photo()
-    if not pic:
-        return
-
-    await context.bot.send_photo(
-        OWNER_ID,
-        open(pic, "rb"),
-        caption=random.choice([
-            "buonanotte…",
-            "prima di dormire",
-            "così",
-            "resta un attimo"
-        ])
-    )
-
-# ======================================================
-# INATTIVITÀ TESTO
-# ======================================================
-
-async def check_inactivity(context):
-    global LAST_USER_MESSAGE
-
-    diff = (datetime.utcnow() - LAST_USER_MESSAGE).total_seconds()
-
-    if diff >= MIN_SILENCE_FOR_PHOTO:
-        await send_photo_if_allowed(context)
-
-    if diff >= 7200:
-        await context.bot.send_message(
+    if pic:
+        await context.bot.send_photo(
             OWNER_ID,
-            random.choice([
-                "Dove sei…?",
-                "È un po’ che non ti sento.",
-                "Mi manchi."
+            open(pic, "rb"),
+            caption=random.choice([
+                "buonanotte…",
+                "prima di dormire",
+                "così",
+                "resta un attimo"
             ])
         )
-        LAST_USER_MESSAGE = datetime.utcnow()
 
 # ======================================================
 # TELEGRAM
 # ======================================================
 
 async def start(update, context):
-    if update.effective_user.id != OWNER_ID:
-        return
-    await update.message.reply_text("sono qui")
+    if update.effective_user.id == OWNER_ID:
+        await update.message.reply_text("sono qui")
 
 async def handle_message(update, context):
     global LAST_USER_MESSAGE, extra_unlocked, PRE_EXTRA_SHOWN
@@ -316,9 +298,10 @@ def main():
 
     jq = app.job_queue
 
+    # controllo richiamo foto
     jq.run_repeating(send_photo_if_allowed, interval=2700, first=1800)
-    jq.run_repeating(check_inactivity, interval=1800, first=1800)
 
+    # buongiorno / buonanotte
     jq.run_daily(send_good_morning, time=GOOD_MORNING_TIME)
     jq.run_daily(send_good_night,   time=GOOD_NIGHT_TIME)
 
